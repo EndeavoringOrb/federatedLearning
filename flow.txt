@@ -1,0 +1,41 @@
+# Init config (these will be actual values, but just showing the value types for now)
+config = {
+    "timePerStep": float, # number of seconds per step
+    "sigma": float, # sigma for random weights
+    "tokens": np.array[np.uint8],
+}
+
+## WHEN NEW CLIENT CONNECTS
+# Send info to new clients
+if len(newClients) > 0:
+    weights = client.recv()
+for client in newClients:
+    send(weights, config)
+    clients.append(client)
+
+## LOOP
+
+# Send seeds
+seeds = [rand() for _ in range(len(clients))]
+for i, client in enumerate(clients):
+    client.send(seeds[i])
+
+# CLIENT DO TRIALS
+
+# Get rewards
+allRewards = []
+rewardInfo = []
+for client in clients:
+    info = client.recv()
+    rewards, seed = info
+    allRewards.extend(rewards)
+    rewardInfo.append((len(rewards), seed))
+
+# Normalize rewards
+normalizedRewards = (allRewards - mean(allRewards)) / std(allRewards)
+
+# Send normalized rewards and info
+for client in clients:
+    client.send((normalizedRewards, rewardInfo))
+
+# CLIENT UPDATE WEIGHTS
