@@ -52,12 +52,11 @@ class ClientProtocol(basic.LineReceiver):
         print(f"Sent rewards to server {currentTime()}")
 
     def handle_normalized_rewards(self, data):
-        self.factory.haveNormalizedRewards = False # Reset flag
+        self.factory.haveNormalizedRewards = False  # Reset flag
         reward_info = data["reward_info"]
         needWeights = data["needWeights"]
         seed = data["seed"]
 
-        print(f"Received normalized rewards {currentTime()}")
         print(f"Mean reward: {np.mean(self.factory.normalizedRewards)}")
 
         # Update weights (simplified example)

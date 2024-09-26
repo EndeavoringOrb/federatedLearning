@@ -18,7 +18,7 @@ class ServerProtocol(basic.LineReceiver):
             print(
                 f"Total clients: {len(self.factory.clients) + len(self.factory.newClients)} ({len(self.factory.newClients)} new)"
             )
-            self.send_initial_data(True)
+            self.send_initial_data()
         else:
             self.factory.newClients.append(self)
             print(f"New client connected {currentTime()}")
@@ -50,25 +50,32 @@ class ServerProtocol(basic.LineReceiver):
         except Exception:
             self.handle_rewards(line)
 
-    def send_initial_data(self, first=False):
+    def send_initial_data(self):
         data = self.factory.weights.tobytes()
         self.sendLine(data)
         self.sendLine(self.factory.getTokens().tobytes())
-        self.sendLine(pickle.dumps((self.factory.getConfig(), np.random.randint(0, seedHigh))))
+        self.sendLine(
+            pickle.dumps((self.factory.getConfig(), np.random.randint(0, seedHigh)))
+        )
         print(f"Sent initial data to {self}")
 
     def handle_rewards(self, data):
-        rewards = np.frombuffer(data, dtype=np.float32)
-        seed = rewards[0].astype(np.uint32)
-        self.factory.all_rewards.extend(rewards[1:])
-        self.factory.reward_info.append((len(rewards), seed))
+        try:
+            rewards = np.frombuffer(data, dtype=np.float32)
+            seed = rewards[0].astype(np.uint32)
+            self.factory.all_rewards.extend(rewards[1:])
+            self.factory.reward_info.append((len(rewards), seed))
 
-        print(
-            f"Recieved rewards [{len(self.factory.reward_info)}/{len(self.factory.clients)}] {currentTime()}"
-        )
+            print(
+                f"Recieved rewards [{len(self.factory.reward_info)}/{len(self.factory.clients)}] {currentTime()}"
+            )
 
-        if len(self.factory.reward_info) == len(self.factory.clients):
-            self.factory.process_rewards()
+            if len(self.factory.reward_info) == len(self.factory.clients):
+                self.factory.process_rewards()
+        except Exception as e:
+            print(f"ERROR: {e}")
+            print(data)
+            self.transport.loseConnection()
 
 
 class ServerFactory(protocol.Factory):
@@ -84,7 +91,7 @@ class ServerFactory(protocol.Factory):
         self.all_rewards = []
         self.reward_info = []
         self.stepNum = 0
-    
+
     def getConfig(self):
         return self.config
 
@@ -106,8 +113,8 @@ class ServerFactory(protocol.Factory):
                 client.send_initial_data()
             self.newWeights = False
 
-        self.clients.extend(self.newClients)
-        self.newClients = []
+            self.clients.extend(self.newClients)
+            self.newClients = []
 
         print(f"Sending rewards and info for next iteration {currentTime()}")
         seeds = np.random.randint(0, seedHigh, len(self.clients))
@@ -122,6 +129,7 @@ class ServerFactory(protocol.Factory):
                 print(f"Requesting weights from {client} {currentTime()}")
             client.sendLine(normalizedRewardsBytes)
             client.sendLine(pickle.dumps(response))
+            print(f"Sent rewards and info [{i+1}/{len(self.clients)}] {currentTime()}")
 
         print(f"Finished step {self.stepNum:,} {currentTime()}")
         self.all_rewards = []
