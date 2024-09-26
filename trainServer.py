@@ -85,7 +85,7 @@ class ServerFactory(protocol.Factory):
         self.weights = np.random.randn(100)  # Example initial weights
         self.newWeights = False
         self.config = {
-            "timePerStep": 0.1,
+            "timePerStep": 2.5,
             "sigma": 0.1,
         }
         self.all_rewards = []

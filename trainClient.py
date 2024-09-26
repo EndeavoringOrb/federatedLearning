@@ -1,6 +1,6 @@
 from twisted.internet import reactor, protocol
 from twisted.protocols import basic
-from time import sleep
+from time import sleep, perf_counter
 import numpy as np
 import pickle
 from helperFuncs import *
@@ -40,12 +40,13 @@ class ClientProtocol(basic.LineReceiver):
 
     def run_trials(self, seed):
         print(f"Running trials {currentTime()}")
+        start = perf_counter()
         # Simulate running trials
-        num_trials = np.random.randint(5, 15)
-        rewards = np.random.randn(num_trials + 1)
-        rewards[0] = seed
-        rewards = rewards.astype(np.float32)
-        sleep(1)
+        rewards = [seed]
+        while perf_counter() - start < self.factory.config['timePerStep']:
+            rewards.append(np.random.randn())
+            sleep(0.01)
+        rewards = np.array(rewards).astype(np.float32)
         print(f"Finished running trials {currentTime()}")
 
         self.sendLine(rewards.tobytes())
