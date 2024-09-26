@@ -70,7 +70,7 @@ class ServerProtocol(basic.LineReceiver):
                 f"Recieved rewards [{len(self.factory.reward_info)}/{len(self.factory.clients)}] {currentTime()}"
             )
 
-            if len(self.factory.reward_info) == len(self.factory.clients):
+            if len(self.factory.reward_info) >= len(self.factory.clients):
                 self.factory.process_rewards()
         except Exception as e:
             print(f"ERROR: {e}")
@@ -102,7 +102,7 @@ class ServerFactory(protocol.Factory):
         return ServerProtocol(self)
 
     def process_rewards(self):
-        print(f"Processing rewards {currentTime()}")
+        print(f"Processing rewards ({len(self.all_rewards)}) {currentTime()}")
         normalizedRewards = (
             np.array(self.all_rewards) - np.mean(self.all_rewards)
         ) / np.std(self.all_rewards)

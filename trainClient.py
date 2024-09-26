@@ -43,7 +43,7 @@ class ClientProtocol(basic.LineReceiver):
         start = perf_counter()
         # Simulate running trials
         rewards = [seed]
-        while perf_counter() - start < self.factory.config['timePerStep']:
+        while perf_counter() - start < self.factory.config["timePerStep"]:
             rewards.append(np.random.randn())
             sleep(0.01)
         rewards = np.array(rewards).astype(np.float32)
