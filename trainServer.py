@@ -3,6 +3,7 @@ from twisted.protocols import basic
 import numpy as np
 import pickle
 from helperFuncs import *
+from model import *
 
 seedHigh = 1_000_000
 
@@ -43,12 +44,17 @@ class ServerProtocol(basic.LineReceiver):
 
     def lineReceived(self, line):
         try:
-            data = pickle.loads(line)
-            self.factory.weights = np.array(data["weights"])
-            self.factory.newWeights = True
-            print(f"Recieved weights {currentTime()}")
-        except Exception:
-            self.handle_rewards(line)
+            data = np.frombuffer(line, dtype=np.float32)
+            if data[0] < 0:
+                self.factory.weights = data[1:]
+                self.factory.newWeights = True
+                print(f"Recieved weights {currentTime()}")
+            else:
+                self.handle_rewards(data)
+        except Exception as e:
+            print(f"ERROR: {e}")
+            print(line)
+            self.transport.loseConnection()
 
     def send_initial_data(self):
         data = self.factory.weights.tobytes()
@@ -59,35 +65,31 @@ class ServerProtocol(basic.LineReceiver):
         )
         print(f"Sent initial data to {self}")
 
-    def handle_rewards(self, data):
-        try:
-            rewards = np.frombuffer(data, dtype=np.float32)
-            seed = rewards[0].astype(np.uint32)
-            self.factory.all_rewards.extend(rewards[1:])
-            self.factory.reward_info.append((len(rewards), seed))
+    def handle_rewards(self, rewards):
+        seed = rewards[0].astype(np.uint32)
+        self.factory.all_rewards.extend(rewards[1:])
+        self.factory.reward_info.append((len(rewards), seed))
 
-            print(
-                f"Recieved rewards [{len(self.factory.reward_info)}/{len(self.factory.clients)}] {currentTime()}"
-            )
+        print(
+            f"Recieved rewards [{len(self.factory.reward_info)}/{len(self.factory.clients)}] {currentTime()}"
+        )
 
-            if len(self.factory.reward_info) >= len(self.factory.clients):
-                self.factory.process_rewards()
-        except Exception as e:
-            print(f"ERROR: {e}")
-            print(data)
-            self.transport.loseConnection()
+        if len(self.factory.reward_info) >= len(self.factory.clients):
+            self.factory.process_rewards()
 
 
 class ServerFactory(protocol.Factory):
     def __init__(self):
         self.clients = []
         self.newClients = []
-        self.weights = np.random.randn(100)  # Example initial weights
-        self.newWeights = False
         self.config = {
             "timePerStep": 2.5,
             "sigma": 0.1,
+            "hiddenSize": 16,
+            "vocabSize": 26,
         }
+        self.weights = getWeights(self.config["hiddenSize"], self.config["vocabSize"])
+        self.newWeights = False
         self.all_rewards = []
         self.reward_info = []
         self.stepNum = 0
@@ -96,15 +98,17 @@ class ServerFactory(protocol.Factory):
         return self.config
 
     def getTokens(self):
-        return np.random.randint(0, 256, 100, dtype=np.uint8)
+        return np.arange(26, dtype=np.uint8)
 
     def buildProtocol(self, addr):
         return ServerProtocol(self)
 
     def process_rewards(self):
         print(f"Processing rewards ({len(self.all_rewards)}) {currentTime()}")
+        mean = np.mean(self.all_rewards)
+        print(f"Mean Reward: {mean}")
         normalizedRewards = (
-            np.array(self.all_rewards) - np.mean(self.all_rewards)
+            np.array(self.all_rewards) - mean
         ) / np.std(self.all_rewards)
 
         if self.newWeights:
@@ -131,7 +135,7 @@ class ServerFactory(protocol.Factory):
             client.sendLine(pickle.dumps(response))
             print(f"Sent rewards and info [{i+1}/{len(self.clients)}] {currentTime()}")
 
-        print(f"Finished step {self.stepNum:,} {currentTime()}")
+        print(f"Finished step {self.stepNum:,} {currentTime()}\n\n")
         self.all_rewards = []
         self.reward_info = []
         self.stepNum += 1

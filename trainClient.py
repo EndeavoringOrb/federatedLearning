@@ -4,6 +4,7 @@ from time import sleep, perf_counter
 import numpy as np
 import pickle
 from helperFuncs import *
+from model import *
 
 
 class ClientProtocol(basic.LineReceiver):
@@ -18,6 +19,7 @@ class ClientProtocol(basic.LineReceiver):
     def lineReceived(self, line):
         if not self.factory.haveWeights:
             self.factory.weights = np.frombuffer(line, dtype=np.float32).copy()
+            self.factory.grad = np.zeros_like(self.factory.weights)
             self.factory.haveWeights = True
             print(f"Received initial weights {currentTime()}")
         elif not self.factory.haveTokens:
@@ -43,8 +45,17 @@ class ClientProtocol(basic.LineReceiver):
         start = perf_counter()
         # Simulate running trials
         rewards = [seed]
+        np.random.seed(seed)
         while perf_counter() - start < self.factory.config["timePerStep"]:
-            rewards.append(np.random.randn())
+            loss = getLoss(
+                self.factory.weights
+                + np.random.randn(self.factory.weights.shape[0])
+                * self.factory.config["sigma"],
+                self.factory.tokens,
+                self.factory.config["hiddenSize"],
+                self.factory.config["vocabSize"],
+            )
+            rewards.append(loss)
             sleep(0.01)
         rewards = np.array(rewards).astype(np.float32)
         print(f"Finished running trials {currentTime()}")
@@ -58,15 +69,23 @@ class ClientProtocol(basic.LineReceiver):
         needWeights = data["needWeights"]
         seed = data["seed"]
 
-        print(f"Mean reward: {np.mean(self.factory.normalizedRewards)}")
-
         # Update weights (simplified example)
-        self.factory.weights += np.random.randn(*self.factory.weights.shape) * 0.01
+        rewardNum = 0
+        for nTrials, trialSeed in reward_info:
+            np.random.seed(trialSeed)
+            for trial in range(nTrials - 1):
+                self.factory.grad += (
+                    np.random.randn(self.factory.weights.shape[0])
+                    * self.factory.config["sigma"]
+                    * self.factory.normalizedRewards[rewardNum]
+                )
+                rewardNum += 1
 
         # Send updated weights back to server
         if needWeights:
-            response = {"weights": self.factory.weights.tolist()}
-            self.sendLine(pickle.dumps(response))
+            self.sendLine(
+                np.append([-1.0], self.factory.weights).astype(np.float32).tobytes()
+            )
             print(f"Sent weights to server {currentTime()}")
 
         self.run_trials(seed)
