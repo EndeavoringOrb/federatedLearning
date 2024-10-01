@@ -4,6 +4,7 @@ import numpy as np
 import pickle
 from helperFuncs import *
 from model import *
+from data import *
 
 seedHigh = 1_000_000
 
@@ -49,11 +50,16 @@ class ServerProtocol(basic.LineReceiver):
             data = np.frombuffer(line, dtype=np.float32)
             if data[0] < 0:
                 self.factory.config["stepNum"] = int(data[1])
-                nParams = self.factory.weights.shape[0]
+                if data.shape[0] != 2 + 3 * self.factory.nParams:
+                    print(f"ERROR: Wrong number of elements  for optimizer state and weights received")
+                    self.transport.loseConnection()
+                    return
+                nParams = self.factory.nParams
                 self.factory.optimizerWeights = data[2 : 2 + 2 * nParams]
                 self.factory.weights = data[2 + 2 * nParams :]
                 self.factory.newWeights = True
-                print(f"Recieved weights {currentTime()}")
+                print(f"Recieved optimizer state and model weights {currentTime()}")
+                np.save("weights/model.npy", np.concatenate(([self.factory.config["hiddenSize"], self.factory.config["vocabSize"]], self.factory.weights)))
             else:
                 self.handle_rewards(data)
         except Exception as e:
@@ -90,27 +96,30 @@ class ServerFactory(protocol.Factory):
         self.clients = []
         self.newClients = []
         self.config = {
-            "timePerStep": 2.5,
+            "timePerStep": 0.25,
             "learningRate": 0.01,
             "sigma": 0.1,
             "hiddenSize": 16,
-            "vocabSize": 26,
+            "vocabSize": vocabSize,
             "beta1": 0.9,
             "beta2": 0.999,
             "stepNum": 0,
         }
         self.weights = getWeights(self.config["hiddenSize"], self.config["vocabSize"])
-        self.optimizerWeights = np.zeros(self.weights.shape[0] * 2).astype(np.float32)
+        self.nParams = self.weights.shape[0]
+        self.optimizerWeights = np.zeros(self.nParams * 2).astype(np.float32)
         self.newWeights = False
         self.all_rewards = []
         self.reward_info = []
         self.stepNum = 0
+        
+        self.tokens = loadTokens()
 
     def getConfig(self):
         return self.config
 
     def getTokens(self):
-        return np.arange(26, dtype=np.uint8)
+        return self.tokens
 
     def buildProtocol(self, addr):
         return ServerProtocol(self)

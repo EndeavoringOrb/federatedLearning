@@ -24,15 +24,15 @@ class ClientProtocol(basic.LineReceiver):
             self.factory.weights = np.frombuffer(line, dtype=np.float32).copy()
             self.factory.grad = np.zeros_like(self.factory.weights)
             self.factory.haveWeights = True
-            log("Received initial weights")
+            log(f"Received initial weights (shape {self.factory.weights.shape})")
         elif not self.factory.haveTokens:
             self.factory.tokens = np.frombuffer(line, dtype=np.uint8)
             self.factory.haveTokens = True
-            log("Received initial tokens")
+            log(f"Received initial tokens (shape {self.factory.tokens.shape})")
         elif not self.factory.haveOptimizerWeights:
             self.factory.optimizerWeights = np.frombuffer(line, dtype=np.float32).copy()
             self.factory.haveOptimizerWeights = True
-            log("Received initial optimizer weights")
+            log(f"Received initial optimizer weights (shape {self.factory.optimizerWeights.shape})")
         elif not self.factory.haveConfig:
             config, seed = pickle.loads(line)
             self.factory.config = config
@@ -79,7 +79,6 @@ class ClientProtocol(basic.LineReceiver):
                 self.factory.config["vocabSize"],
             )
             rewards.append(loss)
-            sleep(0.01)
         rewards = np.array(rewards).astype(np.float32)
         log("Finished running trials")
 

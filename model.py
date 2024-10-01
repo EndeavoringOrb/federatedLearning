@@ -16,33 +16,62 @@ def getWeights(hiddenSize, vocabSize):
     )
 
 
+def getPred(weights, state, hiddenSize, vocabSize):
+    return state @ weights[
+        hiddenSize + hiddenSize * hiddenSize + hiddenSize * vocabSize :
+    ].reshape(hiddenSize, vocabSize)
+
+
+def getNextState(weights, state, token, hiddenSize, vocabSize):
+    state = np.tanh(
+        state
+        + state
+        @ weights[hiddenSize : hiddenSize + hiddenSize * hiddenSize].reshape(
+            hiddenSize, hiddenSize
+        )
+        + weights[
+            hiddenSize
+            + hiddenSize * hiddenSize
+            + hiddenSize * token : hiddenSize
+            + hiddenSize * hiddenSize
+            + hiddenSize * (token + 1)
+        ]
+    )
+    return state
+
+
 def getLoss(weights, tokens, hiddenSize, vocabSize):
     state = weights[:hiddenSize]
     loss = 0.0
     for token in tokens:
         token = token.astype(np.uint32)
-        tokProbs = softmax(
-            state
-            @ weights[
-                hiddenSize + hiddenSize * hiddenSize + hiddenSize * vocabSize :
-            ].reshape(hiddenSize, vocabSize)
-        )
+        tokProbs = softmax(getPred(weights, state, hiddenSize, vocabSize))
         loss -= np.log(tokProbs[token])
-        state = np.tanh(
-            state
-            + state
-            @ weights[hiddenSize : hiddenSize + hiddenSize * hiddenSize].reshape(
-                hiddenSize, hiddenSize
-            )
-            + weights[
-                hiddenSize
-                + hiddenSize * hiddenSize
-                + hiddenSize * token : hiddenSize
-                + hiddenSize * hiddenSize
-                + hiddenSize * (token + 1)
-            ]
-        )
+        state = getNextState(weights, state, token, hiddenSize, vocabSize)
     return loss / len(tokens)
+
+
+def generate(weights, tokens, hiddenSize, vocabSize, stopToken, maxNumTokens=None):
+    state = weights[:hiddenSize]
+    for token in tokens:
+        state = getNextState(weights, state, token, hiddenSize, vocabSize)
+    if maxNumTokens == None:
+        while True:
+            tokProbs = softmax(getPred(weights, state, hiddenSize, vocabSize))
+            token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
+            if token == stopToken:
+                return tokens
+            tokens.append(token)
+            state = getNextState(weights, state, token, hiddenSize, vocabSize)
+    else:
+        for i in range(maxNumTokens):
+            tokProbs = softmax(getPred(weights, state, hiddenSize, vocabSize))
+            token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
+            if token == stopToken:
+                return tokens
+            tokens.append(token)
+            state = getNextState(weights, state, token, hiddenSize, vocabSize)
+    return tokens
 
 
 class AdamOptimizer:
