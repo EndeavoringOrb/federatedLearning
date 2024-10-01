@@ -3,6 +3,8 @@ from twisted.protocols import basic
 from time import sleep, perf_counter
 import numpy as np
 import pickle
+import os
+
 from helperFuncs import *
 from model import *
 
@@ -36,7 +38,10 @@ class ClientProtocol(basic.LineReceiver):
             self.factory.config = config
             self.factory.haveConfig = True
             self.factory.optimizer = AdamOptimizer(
-                self.factory.weights.shape[0], self.factory.config["learningRate"]
+                self.factory.weights.shape[0], 
+                self.factory.config["learningRate"],
+                self.factory.config["beta1"],
+                self.factory.config["beta2"]
             )
             self.factory.optimizer.m = self.factory.optimizerWeights[
                 : self.factory.weights.shape[0]
@@ -102,10 +107,20 @@ class ClientProtocol(basic.LineReceiver):
         self.factory.grad = self.factory.optimizer.getGrad(self.factory.grad)
         self.factory.weights -= self.factory.grad
 
+        # fileNum = len(os.listdir("weights"))
+        # np.save(f"weights/{fileNum}.npy", self.factory.weights)
+
         # Send updated weights back to server
         if needWeights:
             self.sendLine(
-                np.append([-1.0, self.factory.optimizer.t], self.factory.weights)
+                np.concatenate(
+                    [
+                        [-1.0, self.factory.optimizer.t],
+                        self.factory.optimizer.m,
+                        self.factory.optimizer.v,
+                        self.factory.weights,
+                    ]
+                )
                 .astype(np.float32)
                 .tobytes()
             )

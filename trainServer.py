@@ -41,6 +41,8 @@ class ServerProtocol(basic.LineReceiver):
         print(
             f"Total clients: {len(self.factory.clients) + len(self.factory.newClients)} ({len(self.factory.newClients)} new)"
         )
+        if len(self.factory.reward_info) >= len(self.factory.clients) and len(self.factory.reward_info) > 0:
+            self.factory.process_rewards()
 
     def lineReceived(self, line):
         try:
@@ -48,8 +50,8 @@ class ServerProtocol(basic.LineReceiver):
             if data[0] < 0:
                 self.factory.config["stepNum"] = int(data[1])
                 nParams = self.factory.weights.shape[0]
-                self.factory.weights = data[2 : 2 + nParams]
-                self.optimizerWeights = data[2 + nParams :]
+                self.factory.optimizerWeights = data[2 : 2 + 2 * nParams]
+                self.factory.weights = data[2 + 2 * nParams :]
                 self.factory.newWeights = True
                 print(f"Recieved weights {currentTime()}")
             else:

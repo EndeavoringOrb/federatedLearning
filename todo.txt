@@ -1,2 +1,1 @@
-implement weight checks where you request weights from all clients and make sure they are the same (just for debug purposes)
 implement checkpoints where you request weights from a client every 5 minutes or something
