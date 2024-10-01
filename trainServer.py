@@ -84,6 +84,7 @@ class ServerFactory(protocol.Factory):
         self.newClients = []
         self.config = {
             "timePerStep": 2.5,
+            "learningRate": 0.01,
             "sigma": 0.1,
             "hiddenSize": 16,
             "vocabSize": 26,
@@ -142,6 +143,7 @@ class ServerFactory(protocol.Factory):
 
 
 if __name__ == "__main__":
-    reactor.listenTCP(8000, ServerFactory())
-    print("Server started on port 8000")
+    port = 54329
+    reactor.listenTCP(port, ServerFactory())
+    print(f"Server started on port {port}")
     reactor.run()

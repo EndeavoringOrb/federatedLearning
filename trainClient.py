@@ -30,6 +30,9 @@ class ClientProtocol(basic.LineReceiver):
             config, seed = pickle.loads(line)
             self.factory.config = config
             self.factory.haveConfig = True
+            self.factory.optimizer = AdamOptimizer(
+                self.factory.weights.shape[0], self.factory.config["learningRate"]
+            )
             print(f"Received initial config {currentTime()}")
             self.run_trials(seed)
         elif not self.factory.haveNormalizedRewards:
@@ -69,8 +72,9 @@ class ClientProtocol(basic.LineReceiver):
         needWeights = data["needWeights"]
         seed = data["seed"]
 
-        # Update weights (simplified example)
+        # Update weights
         rewardNum = 0
+        self.factory.grad.fill(0)
         for nTrials, trialSeed in reward_info:
             np.random.seed(trialSeed)
             for trial in range(nTrials - 1):
@@ -80,6 +84,8 @@ class ClientProtocol(basic.LineReceiver):
                     * self.factory.normalizedRewards[rewardNum]
                 )
                 rewardNum += 1
+        self.factory.grad = self.factory.optimizer.getGrad(self.factory.grad)
+        self.factory.weights -= self.factory.grad
 
         # Send updated weights back to server
         if needWeights:
@@ -108,6 +114,7 @@ class ClientFactory(protocol.ClientFactory):
 
 
 if __name__ == "__main__":
+    port = 54329
     factory = ClientFactory()
-    reactor.connectTCP("localhost", 8000, factory)
+    reactor.connectTCP("130.215.211.30", port, factory)
     reactor.run()
