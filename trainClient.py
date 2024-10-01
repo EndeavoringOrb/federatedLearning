@@ -9,9 +9,10 @@ from model import *
 
 class ClientProtocol(basic.LineReceiver):
     def connectionMade(self):
-        print(f"Connected to server {currentTime()}")
+        log("Connected to server")
         self.factory.client = self
         self.factory.haveWeights = False
+        self.factory.haveOptimizerWeights = False
         self.factory.haveConfig = False
         self.factory.haveTokens = False
         self.factory.haveNormalizedRewards = False
@@ -21,11 +22,15 @@ class ClientProtocol(basic.LineReceiver):
             self.factory.weights = np.frombuffer(line, dtype=np.float32).copy()
             self.factory.grad = np.zeros_like(self.factory.weights)
             self.factory.haveWeights = True
-            print(f"Received initial weights {currentTime()}")
+            log("Received initial weights")
         elif not self.factory.haveTokens:
             self.factory.tokens = np.frombuffer(line, dtype=np.uint8)
             self.factory.haveTokens = True
-            print(f"Received initial tokens {currentTime()}")
+            log("Received initial tokens")
+        elif not self.factory.haveOptimizerWeights:
+            self.factory.optimizerWeights = np.frombuffer(line, dtype=np.float32).copy()
+            self.factory.haveOptimizerWeights = True
+            log("Received initial optimizer weights")
         elif not self.factory.haveConfig:
             config, seed = pickle.loads(line)
             self.factory.config = config
@@ -33,18 +38,28 @@ class ClientProtocol(basic.LineReceiver):
             self.factory.optimizer = AdamOptimizer(
                 self.factory.weights.shape[0], self.factory.config["learningRate"]
             )
-            print(f"Received initial config {currentTime()}")
+            self.factory.optimizer.m = self.factory.optimizerWeights[
+                : self.factory.weights.shape[0]
+            ]
+            self.factory.optimizer.v = self.factory.optimizerWeights[
+                self.factory.weights.shape[0] :
+            ]
+            self.factory.optimizer.t = self.factory.config["stepNum"]
+            for i in range(self.factory.optimizer.t):
+                self.factory.optimizer.beta1Power *= self.factory.optimizer.beta1
+                self.factory.optimizer.beta2Power *= self.factory.optimizer.beta2
+            log("Received initial config")
             self.run_trials(seed)
         elif not self.factory.haveNormalizedRewards:
             self.factory.normalizedRewards = np.frombuffer(line, dtype=np.float32)
             self.factory.haveNormalizedRewards = True
-            print(f"Received normalized rewards {currentTime()}")
+            log("Received normalized rewards")
         else:
             data = pickle.loads(line)
             self.handle_normalized_rewards(data)
 
     def run_trials(self, seed):
-        print(f"Running trials {currentTime()}")
+        log("Running trials")
         start = perf_counter()
         # Simulate running trials
         rewards = [seed]
@@ -61,10 +76,10 @@ class ClientProtocol(basic.LineReceiver):
             rewards.append(loss)
             sleep(0.01)
         rewards = np.array(rewards).astype(np.float32)
-        print(f"Finished running trials {currentTime()}")
+        log("Finished running trials")
 
         self.sendLine(rewards.tobytes())
-        print(f"Sent rewards to server {currentTime()}")
+        log("Sent rewards to server")
 
     def handle_normalized_rewards(self, data):
         self.factory.haveNormalizedRewards = False  # Reset flag
@@ -90,9 +105,11 @@ class ClientProtocol(basic.LineReceiver):
         # Send updated weights back to server
         if needWeights:
             self.sendLine(
-                np.append([-1.0], self.factory.weights).astype(np.float32).tobytes()
+                np.append([-1.0, self.factory.optimizer.t], self.factory.weights)
+                .astype(np.float32)
+                .tobytes()
             )
-            print(f"Sent weights to server {currentTime()}")
+            log("Sent weights to server")
 
         self.run_trials(seed)
 
@@ -101,15 +118,15 @@ class ClientFactory(protocol.ClientFactory):
     protocol = ClientProtocol
 
     def clientConnectionFailed(self, connector, reason):
-        print("Connection failed")
-        print(f"Connector: {connector}")
-        print(f"Reason: {reason}")
+        log("Connection failed")
+        log(f"Connector: {connector}")
+        log(f"Reason: {reason}")
         reactor.stop()
 
     def clientConnectionLost(self, connector, reason):
-        print("Connection lost")
-        print(f"Connector: {connector}")
-        print(f"Reason: {reason}")
+        log("Connection lost")
+        log(f"Connector: {connector}")
+        log(f"Reason: {reason}")
         reactor.stop()
 
 

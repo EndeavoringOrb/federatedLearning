@@ -62,7 +62,12 @@ class AdamOptimizer:
     def getGrad(self, grad):
         self.m = self.beta1 * self.m + (1.0 - self.beta1) * grad
         self.v = self.beta2 * self.v + (1.0 - self.beta2) * grad * grad
-        grad = self.alpha * self.m * (1.0 / (1.0 - self.beta1Power)) / (np.sqrt(self.v * (1.0 / (1.0 - self.beta2Power))) + self.eps)
+        grad = (
+            self.alpha
+            * self.m
+            * (1.0 / (1.0 - self.beta1Power))
+            / (np.sqrt(self.v * (1.0 / (1.0 - self.beta2Power))) + self.eps)
+        )
         self.beta1Power *= self.beta1
         self.beta2Power *= self.beta2
         self.t += 1

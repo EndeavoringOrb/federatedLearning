@@ -46,7 +46,10 @@ class ServerProtocol(basic.LineReceiver):
         try:
             data = np.frombuffer(line, dtype=np.float32)
             if data[0] < 0:
-                self.factory.weights = data[1:]
+                self.factory.config["stepNum"] = int(data[1])
+                nParams = self.factory.weights.shape[0]
+                self.factory.weights = data[2 : 2 + nParams]
+                self.optimizerWeights = data[2 + nParams :]
                 self.factory.newWeights = True
                 print(f"Recieved weights {currentTime()}")
             else:
@@ -60,6 +63,8 @@ class ServerProtocol(basic.LineReceiver):
         data = self.factory.weights.tobytes()
         self.sendLine(data)
         self.sendLine(self.factory.getTokens().tobytes())
+        data = self.factory.optimizerWeights.tobytes()
+        self.sendLine(data)
         self.sendLine(
             pickle.dumps((self.factory.getConfig(), np.random.randint(0, seedHigh)))
         )
@@ -88,8 +93,12 @@ class ServerFactory(protocol.Factory):
             "sigma": 0.1,
             "hiddenSize": 16,
             "vocabSize": 26,
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "stepNum": 0,
         }
         self.weights = getWeights(self.config["hiddenSize"], self.config["vocabSize"])
+        self.optimizerWeights = np.zeros(self.weights.shape[0] * 2).astype(np.float32)
         self.newWeights = False
         self.all_rewards = []
         self.reward_info = []
@@ -108,9 +117,9 @@ class ServerFactory(protocol.Factory):
         print(f"Processing rewards ({len(self.all_rewards)}) {currentTime()}")
         mean = np.mean(self.all_rewards)
         print(f"Mean Reward: {mean}")
-        normalizedRewards = (
-            np.array(self.all_rewards) - mean
-        ) / np.std(self.all_rewards)
+        normalizedRewards = (np.array(self.all_rewards) - mean) / np.std(
+            self.all_rewards
+        )
 
         if self.newWeights:
             print(f"Sending weights to new clients {currentTime()}")
