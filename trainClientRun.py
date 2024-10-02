@@ -3,6 +3,9 @@ import time
 import sys
 import os
 
+process = subprocess.Popen(["pip", "install", "numpy", "twisted"])
+process.wait()
+
 while True:
     try:
         # Run the script

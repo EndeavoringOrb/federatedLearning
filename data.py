@@ -14,11 +14,12 @@ def tokenize(text):
     return [stoi[character] for character in text]
 
 
-def decode(tokens):
+def deTokenize(tokens):
     return "".join([itos[token] for token in tokens])
 
 
 def loadTokens():
     tokens = tokenize(tokenText)
     tokens = np.array(tokens, dtype=np.uint8)
+    print(f"Loaded {len(tokens)} tokens")
     return tokens

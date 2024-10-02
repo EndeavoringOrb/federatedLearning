@@ -1,1 +1,3 @@
+fix the numpy bytes sending (it isn't getting read properly because of \n characters in the bytes stopping the readline thing)
 implement checkpoints where you request weights from a client every 5 minutes or something
+make step number counter reset to the t value of the optimizer when we get weights from a client

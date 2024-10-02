@@ -96,7 +96,7 @@ class ServerFactory(protocol.Factory):
         self.clients = []
         self.newClients = []
         self.config = {
-            "timePerStep": 0.25,
+            "timePerStep": 1,
             "learningRate": 0.01,
             "sigma": 0.1,
             "hiddenSize": 16,

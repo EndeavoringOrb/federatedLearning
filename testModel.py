@@ -16,5 +16,5 @@ print(tokenize("|"))
 while True:
     text = input("Enter text: ")
     tokens = tokenize(text)
-    tokens = generate(weights, tokens, hiddenSize, vocabSize, 0)
-    print(decode(tokens))
+    tokens = generate(weights, tokens, hiddenSize, vocabSize, tokenize("|"))
+    print(deTokenize(tokens))
