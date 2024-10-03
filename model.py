@@ -45,10 +45,22 @@ def getLoss(weights, tokens, hiddenSize, vocabSize):
     loss = 0.0
     for token in tokens:
         token = token.astype(np.uint32)
-        tokProbs = softmax(getPred(weights, state, hiddenSize, vocabSize))
-        loss -= np.log(tokProbs[token])
+        preds = getPred(weights, state, hiddenSize, vocabSize)
+        preds = np.exp(preds - np.max(preds))
+        loss -= np.log(preds[token] / np.sum(preds))
         state = getNextState(weights, state, token, hiddenSize, vocabSize)
     return loss / len(tokens)
+
+
+def getAccuracy(weights, tokens, hiddenSize, vocabSize):
+    state = weights[:hiddenSize]
+    correct = 0.0
+    for token in tokens:
+        token = token.astype(np.uint32)
+        preds = getPred(weights, state, hiddenSize, vocabSize)
+        correct += (np.argmax(preds) == token)
+        state = getNextState(weights, state, token, hiddenSize, vocabSize)
+    return correct / len(tokens)
 
 
 def generate(weights, tokens, hiddenSize, vocabSize, stopToken, maxNumTokens=None):

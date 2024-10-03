@@ -99,7 +99,7 @@ class ServerFactory(protocol.Factory):
             "timePerStep": 1,
             "learningRate": 0.01,
             "sigma": 0.1,
-            "hiddenSize": 16,
+            "hiddenSize": 8,
             "vocabSize": vocabSize,
             "beta1": 0.9,
             "beta2": 0.999,

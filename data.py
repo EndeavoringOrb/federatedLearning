@@ -4,7 +4,8 @@ with open("tokens.txt", "r", encoding="utf-8") as f:
     tokenText = f.read()
 
 chars = set(tokenText)
-chars = ["|"] + sorted(list(chars))
+stopToken = "|"
+chars = [stopToken] + sorted(list(chars))
 vocabSize = len(chars)
 stoi = {character: idx for idx, character in enumerate(chars)}
 itos = {idx: character for idx, character in enumerate(chars)}
@@ -19,7 +20,7 @@ def deTokenize(tokens):
 
 
 def loadTokens():
-    tokens = tokenize(tokenText)
+    tokens = tokenize(tokenText) + tokenize([stopToken])
     tokens = np.array(tokens, dtype=np.uint8)
     print(f"Loaded {len(tokens)} tokens")
     return tokens
