@@ -1,27 +1,140 @@
 import socket
 import threading
+from threading import Lock
 from basicCommunicationUtils import *
+from utilitiesModel import *
+from utilitiesMisc import *
+from time import sleep
 
 
-# Function to handle client connections
-def handle_client(client_socket, addr):
-    print(f"[NEW CONNECTION] {addr} connected.")
+def dataLoader():
+    while True:
+        yield np.random.randint(0, 128, 10).astype(np.uint8)
 
-    connected = True
-    while connected:
-        try:
-            data, valid = receiveData(client_socket, "np.float32", addr)
+
+config = {
+    "timePerStep": 0.5,
+    "learningRate": 0.01,
+    "sigma": 0.1,
+    "hiddenSize": 128,
+    "vocabSize": 128,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "stepNum": 0,
+    "modelType": "chat",
+}
+seedHigh = 1_000_000
+
+
+tokenLoader = dataLoader()
+if config["modelType"] == "critic":
+    model = ChatCritic()
+else:
+    model = ChatModel()
+weights = model.getWeights(config["hiddenSize"], config["vocabSize"])
+nParams = weights.shape[0]
+optimizerValues = np.zeros(nParams * 2).astype(np.float32)
+newWeights = False
+all_rewards = []
+reward_info = []
+stepNum = 0
+
+clients = []
+newClients = []
+
+threadLock = Lock()
+
+
+def handleClients():
+    global newClients
+    global weights
+    global optimizerValues
+    global config
+    global stepNum
+
+    while True:
+        # wait for some clients
+        while len(clients) + len(newClients) == 0:
+            sleep(0.1)
+
+        # send info to new clients
+        if len(newClients) > 0:
+            if len(clients) > 0:
+                print(f"Getting weights from {clients[0][1]}")
+                # request weights
+                sendBytes(clients[0][0], "need weights".encode("utf-8"), clients[0][1])
+
+                # get weights
+                data, valid = receiveData(clients[0][0], "np.float32", clients[0][1])
+                if valid:
+                    print(f"[{clients[0][1]}] Sent weights")
+                    config["stepNum"] = int(data[0])
+                    stepNum = config["stepNum"]
+                    optimizerValues = data[1 : 1 + 2 * nParams]
+                    weights = data[1 + 2 * nParams :]
+                    np.save(f"weights/model.npy", weights)
+                else:
+                    print(f"Failed to get weights")
+                    break
+
+            print(f"Sending weights to {len(newClients)} clients")
+            for client in newClients:
+                # send weights
+                sendBytes(client[0], weights.tobytes(), client[1])
+                # send tokens
+                sendBytes(client[0], next(tokenLoader).tobytes(), client[1])
+                # send optimizer state
+                sendBytes(client[0], optimizerValues.tobytes(), client[1])
+                # send config
+                sendBytes(client[0], pickle.dumps(config), client[1])
+                # send random seed
+                sendBytes(
+                    client[0], pickle.dumps(np.random.randint(0, seedHigh)), client[1]
+                )
+            clients.extend(newClients)
+            newClients = []
+
+        for client in clients:
+            sendBytes(client[0], "dont need weights".encode("utf-8"), client[1])
+
+        # get rewards
+        print(f"Waiting for rewards")
+        all_rewards = []
+        reward_info = []
+        for client in clients:
+            rewards, valid = receiveData(client[0], "np.float32", client[1])
             if valid:
-                print(f"[{addr}] {data}")
-                sendBytes(client_socket, f"Received: {data}".encode("utf-8"), addr)
+                print(f"[{client[1]}] Sent {len(rewards) - 1:,} rewards")
+                seed = rewards[0].astype(np.uint32)
+                with threadLock:
+                    all_rewards.extend(rewards[1:])
+                    reward_info.append((len(rewards), seed))
             else:
-                connected = False
-        except Exception as e:
-            print(f"[ERROR] Connection with {addr} lost. {e}")
-            connected = False
+                print(f"[{client[1]}] Failed sending rewards")
 
-    client_socket.close()
-    print(f"[DISCONNECTED] {addr} disconnected.")
+        # process rewards
+        numRewards = len(all_rewards)
+        print(f"Processing rewards ({numRewards}) {currentTime()}")
+        if numRewards == 1:
+            normalizedRewards = np.zeros(1)
+            print(f"Mean Reward: {0}")
+        else:
+            mean = np.mean(all_rewards)
+            print(f"Mean Reward: {mean}")
+            normalizedRewards = (np.array(all_rewards) - mean) / np.std(all_rewards)
+
+        print()
+        print(f"Sending rewards and info for next iteration {currentTime()}")
+        seeds = np.random.randint(0, seedHigh, len(clients))
+        normalizedRewardsBytes = normalizedRewards.astype(np.float32).tobytes()
+        for i, client in enumerate(clients):
+            response = {
+                "reward_info": reward_info,
+                "seed": seeds[i],
+            }
+            sendBytes(client[0], normalizedRewardsBytes, client[1])
+            sendBytes(client[0], pickle.dumps(response), client[1])
+            print(f"Sent rewards and info [{i+1}/{len(clients)}] {currentTime()}")
 
 
 def start_server():
@@ -37,12 +150,14 @@ def start_server():
     server.listen(5)
     print(f"[LISTENING] Server is listening on {server_ip}:{server_port}")
 
+    # Start handler thread
+    thread = threading.Thread(target=handleClients, args=())
+    thread.start()
+
     while True:
         # Accept a connection
         client_socket, addr = server.accept()
-        # Create a new thread for each client
-        thread = threading.Thread(target=handle_client, args=(client_socket, addr))
-        thread.start()
+        newClients.append([client_socket, addr])
         print(f"[ACTIVE CONNECTIONS] {threading.active_count() - 1}")
 
 

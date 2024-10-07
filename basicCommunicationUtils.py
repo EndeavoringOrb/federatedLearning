@@ -5,7 +5,7 @@ import numpy as np
 
 headerFormat = "I"
 headerSize = 4
-DEBUG = True
+DEBUG = False
 BUFFER_SIZE = 1024
 
 
@@ -170,6 +170,8 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         data = np.frombuffer(msg, np.uint8)
     elif dataType == "np.float32":
         data = np.frombuffer(msg, np.float32)
+    elif dataType == "pickle":
+        data = pickle.loads(msg)
     else:
         data = msg.decode("utf-8")  # just try normal decode
 

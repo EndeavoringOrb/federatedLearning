@@ -57,7 +57,7 @@ class ServerProtocol(basic.LineReceiver):
                 self.factory.stepNum = self.factory.config["stepNum"]
                 if data.shape[0] != 2 + 3 * self.factory.nParams:
                     print(
-                        f"ERROR: Wrong number of elements  for optimizer state and weights received"
+                        f"ERROR: Wrong number of elements for optimizer state and weights received"
                     )
                     self.transport.loseConnection()
                     return
