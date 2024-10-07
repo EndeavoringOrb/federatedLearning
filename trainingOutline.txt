@@ -1,0 +1,43 @@
+CHAT MODEL:
+- only one question at a time from the user
+- the user can ask multiple questions, but each question should have it's own message
+- only Who, What, When, Where, How questions
+target = "Does the response answer the most recent question, given the sources are true?"
+
+User: Who was the first king of France?
+-query
+-read article
+-respond
+
++query
+First king of France
+-query
+-get articles
+-read article
+-respond
+
++get articles
+(sorted by most recently accessed)
+Article 1: List of French monarchs
+Article 2: Clovis I
+-query
+-get articles
+-read article
+-respond
+
++read article
+Article 1: List of French monarchs
+<article text>
+-query
+-get articles
+-read article
+-respond
+
++respond
+Clovis I, king of the Franks from 507-511 is usually regarded as the first king of France.
+
+EMBEDDING MODEL:
+queryEmbedding = queryModel(query)
+articleEmbedding = articleModel(article)
+similarity = queryEmbedding.normalized() DOT articleEmbedding.normalized()
+target = "Does the article contain information about the query?" (yes=1, no=0)

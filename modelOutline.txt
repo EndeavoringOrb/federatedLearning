@@ -1,4 +1,0 @@
-Training data:
-only one question at a time from the user
-the user can ask multiple questions, but each question should have it's own message
-only Who, What, When, Where, How questions

@@ -3,10 +3,11 @@ from twisted.protocols import basic
 from time import sleep, perf_counter
 import numpy as np
 import pickle
-import os
 
-from helperFuncs import *
-from model import *
+from utilitiesMisc import *
+from utilitiesModel import *
+from utilitiesData import *
+from squad.squad import *
 
 
 class ClientProtocol(basic.LineReceiver):
@@ -26,22 +27,24 @@ class ClientProtocol(basic.LineReceiver):
             self.factory.haveWeights = True
             log(f"Received initial weights (shape {self.factory.weights.shape})")
         elif not self.factory.haveTokens:
-            self.factory.tokens = np.frombuffer(line, dtype=np.uint8)
+            self.factory.tokens = formatDataExample(pickle.loads(line), self.factory.searcher)
             self.factory.haveTokens = True
             log(f"Received initial tokens (shape {self.factory.tokens.shape})")
         elif not self.factory.haveOptimizerWeights:
             self.factory.optimizerWeights = np.frombuffer(line, dtype=np.float32).copy()
             self.factory.haveOptimizerWeights = True
-            log(f"Received initial optimizer weights (shape {self.factory.optimizerWeights.shape})")
+            log(
+                f"Received initial optimizer weights (shape {self.factory.optimizerWeights.shape})"
+            )
         elif not self.factory.haveConfig:
             config, seed = pickle.loads(line)
             self.factory.config = config
             self.factory.haveConfig = True
             self.factory.optimizer = AdamOptimizer(
-                self.factory.weights.shape[0], 
+                self.factory.weights.shape[0],
                 self.factory.config["learningRate"],
                 self.factory.config["beta1"],
-                self.factory.config["beta2"]
+                self.factory.config["beta2"],
             )
             self.factory.optimizer.m = self.factory.optimizerWeights[
                 : self.factory.weights.shape[0]
@@ -53,6 +56,14 @@ class ClientProtocol(basic.LineReceiver):
             for i in range(self.factory.optimizer.t):
                 self.factory.optimizer.beta1Power *= self.factory.optimizer.beta1
                 self.factory.optimizer.beta2Power *= self.factory.optimizer.beta2
+
+            if self.factory.config["modelType"] == "critic":
+                self.factory.model = ChatCritic()
+                self.factory.tokens = [
+                    [self.factory.tokens, 1],
+                ]
+            else:
+                self.factory.model = ChatModel()
             log("Received initial config")
             self.run_trials(seed)
         elif not self.factory.haveNormalizedRewards:
@@ -70,7 +81,7 @@ class ClientProtocol(basic.LineReceiver):
         rewards = [seed]
         np.random.seed(seed)
         while perf_counter() - start < self.factory.config["timePerStep"]:
-            loss = getLoss(
+            loss = self.factory.model.getLoss(
                 self.factory.weights
                 + np.random.randn(self.factory.weights.shape[0])
                 * self.factory.config["sigma"],
@@ -130,6 +141,10 @@ class ClientProtocol(basic.LineReceiver):
 
 class ClientFactory(protocol.ClientFactory):
     protocol = ClientProtocol
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.searcher = ArticleSearcher("C:/Users/aaron/CODING/wikiTalk/tokenData")
 
     def clientConnectionFailed(self, connector, reason):
         log("Connection failed")

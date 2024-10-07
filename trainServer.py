@@ -2,9 +2,10 @@ from twisted.internet import reactor, protocol
 from twisted.protocols import basic
 import numpy as np
 import pickle
-from helperFuncs import *
-from model import *
-from data import *
+from utilitiesMisc import *
+from utilitiesModel import *
+from utilitiesData import *
+from squad.squad import dataLoader
 
 seedHigh = 1_000_000
 
@@ -42,7 +43,10 @@ class ServerProtocol(basic.LineReceiver):
         print(
             f"Total clients: {len(self.factory.clients) + len(self.factory.newClients)} ({len(self.factory.newClients)} new)"
         )
-        if len(self.factory.reward_info) >= len(self.factory.clients) and len(self.factory.reward_info) > 0:
+        if (
+            len(self.factory.reward_info) >= len(self.factory.clients)
+            and len(self.factory.reward_info) > 0
+        ):
             self.factory.process_rewards()
 
     def lineReceived(self, line):
@@ -50,8 +54,11 @@ class ServerProtocol(basic.LineReceiver):
             data = np.frombuffer(line, dtype=np.float32)
             if data[0] < 0:
                 self.factory.config["stepNum"] = int(data[1])
+                self.factory.stepNum = self.factory.config["stepNum"]
                 if data.shape[0] != 2 + 3 * self.factory.nParams:
-                    print(f"ERROR: Wrong number of elements  for optimizer state and weights received")
+                    print(
+                        f"ERROR: Wrong number of elements  for optimizer state and weights received"
+                    )
                     self.transport.loseConnection()
                     return
                 nParams = self.factory.nParams
@@ -59,7 +66,18 @@ class ServerProtocol(basic.LineReceiver):
                 self.factory.weights = data[2 + 2 * nParams :]
                 self.factory.newWeights = True
                 print(f"Recieved optimizer state and model weights {currentTime()}")
-                np.save("weights/model.npy", np.concatenate(([self.factory.config["hiddenSize"], self.factory.config["vocabSize"]], self.factory.weights)))
+                np.save(
+                    "weights/model.npy",
+                    np.concatenate(
+                        (
+                            [
+                                self.factory.config["hiddenSize"],
+                                self.factory.config["vocabSize"],
+                            ],
+                            self.factory.weights,
+                        )
+                    ),
+                )
             else:
                 self.handle_rewards(data)
         except Exception as e:
@@ -70,7 +88,7 @@ class ServerProtocol(basic.LineReceiver):
     def send_initial_data(self):
         data = self.factory.weights.tobytes()
         self.sendLine(data)
-        self.sendLine(self.factory.getTokens().tobytes())
+        self.sendLine(pickle.dumps(self.factory.getTokens()))
         data = self.factory.optimizerWeights.tobytes()
         self.sendLine(data)
         self.sendLine(
@@ -96,41 +114,53 @@ class ServerFactory(protocol.Factory):
         self.clients = []
         self.newClients = []
         self.config = {
-            "timePerStep": 1,
+            "timePerStep": 10,
             "learningRate": 0.01,
             "sigma": 0.1,
             "hiddenSize": 8,
-            "vocabSize": vocabSize,
+            "vocabSize": 128,
             "beta1": 0.9,
             "beta2": 0.999,
             "stepNum": 0,
+            "modelType": "chat",
         }
-        self.weights = getWeights(self.config["hiddenSize"], self.config["vocabSize"])
+        if self.config["modelType"] == "critic":
+            self.model = ChatCritic()
+        else:
+            self.model = ChatModel()
+        self.weights = self.model.getWeights(
+            self.config["hiddenSize"], self.config["vocabSize"]
+        )
         self.nParams = self.weights.shape[0]
         self.optimizerWeights = np.zeros(self.nParams * 2).astype(np.float32)
         self.newWeights = False
         self.all_rewards = []
         self.reward_info = []
         self.stepNum = 0
-        
-        self.tokens = loadTokens()
+
+        self.tokenLoader = dataLoader()
 
     def getConfig(self):
         return self.config
 
     def getTokens(self):
-        return self.tokens
+        return next(self.tokenLoader)
 
     def buildProtocol(self, addr):
         return ServerProtocol(self)
 
     def process_rewards(self):
-        print(f"Processing rewards ({len(self.all_rewards)}) {currentTime()}")
-        mean = np.mean(self.all_rewards)
-        print(f"Mean Reward: {mean}")
-        normalizedRewards = (np.array(self.all_rewards) - mean) / np.std(
-            self.all_rewards
-        )
+        numRewards = len(self.all_rewards)
+        print(f"Processing rewards ({numRewards}) {currentTime()}")
+        if numRewards == 1:
+            normalizedRewards = np.zeros(1)
+            print(f"Mean Reward: {0}")
+        else:
+            mean = np.mean(self.all_rewards)
+            print(f"Mean Reward: {mean}")
+            normalizedRewards = (np.array(self.all_rewards) - mean) / np.std(
+                self.all_rewards
+            )
 
         if self.newWeights:
             print(f"Sending weights to new clients {currentTime()}")
@@ -143,7 +173,7 @@ class ServerFactory(protocol.Factory):
 
         print(f"Sending rewards and info for next iteration {currentTime()}")
         seeds = np.random.randint(0, seedHigh, len(self.clients))
-        normalizedRewardsBytes = normalizedRewards.tobytes()
+        normalizedRewardsBytes = normalizedRewards.astype(np.float32).tobytes()
         for i, client in enumerate(self.clients):
             response = {
                 "reward_info": self.reward_info,
