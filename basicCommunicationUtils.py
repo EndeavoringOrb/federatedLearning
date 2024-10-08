@@ -101,11 +101,13 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     log(f"  Received header echo {echoLength}")
 
     while echoLength != 0:
-        msgLength = echoLength
         log(f"  Header verification failed. Re-requesting header.")
         msg = connection.recv(headerSize)
         echoLength = struct.unpack(headerFormat, msg)[0]
         log(f"  Received header echo {echoLength}")
+        if echoLength == 0:
+            break
+        msgLength = echoLength
         connection.send(struct.pack(headerFormat, echoLength))
 
     log(f"  Receiving message with length {msgLength}")
