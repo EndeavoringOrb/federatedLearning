@@ -93,11 +93,14 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         log(f"  Received empty message from {addr}")
         return msg, False
 
+    log(f"  Sending header echo")
     connection.send(msg)
     msg = connection.recv(headerSize)
     echoLength = struct.unpack(headerFormat, msg)[0]
+    log(f"  Received header verification")
 
     while echoLength != 0:
+        log(f"  Header verification failed. Re-requesting header.")
         msg = connection.recv(headerSize)
         msgLength = struct.unpack(headerFormat, msg)[0]
         msg = connection.recv(headerSize)
@@ -109,7 +112,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     messages = []
     numChunks = (msgLength + BUFFER_SIZE - 1) // BUFFER_SIZE
     remainderBytes = msgLength - (msgLength // BUFFER_SIZE) * BUFFER_SIZE
-    log(f"Remainder bytes: {remainderBytes}")
+    log(f"  Remainder bytes: {remainderBytes}")
     for i in range(numChunks):
         if i == numChunks - 1 and remainderBytes > 0:
             chunkLength = remainderBytes
