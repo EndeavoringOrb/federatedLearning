@@ -42,11 +42,10 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     msgLength = struct.unpack(headerFormat, msg)[0]
     msg = connection.recv(msgLength)
     properlyReceived = pickle.loads(msg) == "chunksGood"
-    if DEBUG:
-        if properlyReceived:
-            print(f"  Chunks were properly received")
-        else:
-            print(f"  Chunks were NOT properly received")
+    if properlyReceived:
+        log(f"  Chunks were properly received")
+    else:
+        log(f"  Chunks were NOT properly received")
 
     # re-send stuff if not properly received
     while not properlyReceived:
@@ -78,8 +77,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     log("RECEIVING DATA")
     msg = connection.recv(headerSize)
     if not msg:
-        if DEBUG:
-            print(f"  Received empty message from {addr}")
+        log(f"  Received empty message from {addr}")
         return msg, False
 
     msgLength = struct.unpack(headerFormat, msg)[0]
