@@ -34,7 +34,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     for i, chunk in enumerate(dataChunks):
         connection.send(chunk)
         if DEBUG:
-            print(f"  Sent chunk {i+1}/{numChunks}")
+            print(f"  Sent chunk {i+1}/{numChunks} with length {len(chunk)}")
 
     # see if chunks were properly received
     msg = connection.recv(headerSize)
@@ -92,7 +92,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     # Receive message bytes in chunks
     messages = []
     numChunks = (msgLength + BUFFER_SIZE - 1) // BUFFER_SIZE
-    remainderBytes = msgLength - (msgLength // BUFFER_SIZE) * msgLength
+    remainderBytes = msgLength - (msgLength // BUFFER_SIZE) * BUFFER_SIZE
     for i in range(numChunks):
         if i == numChunks - 1 and remainderBytes > 0:
             chunkLength = remainderBytes
