@@ -22,7 +22,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     # send header
     connection.send(struct.pack(headerFormat, dataLength))
     log(f"  Sent header specifying length of {len(data)} bytes")
-    msg = connection.recv(4)
+    msg = connection.recv(4, socket.MSG_WAITALL)
     dataLengthEcho = struct.unpack(headerFormat, msg)[0]
 
     if dataLength != dataLengthEcho:
@@ -31,7 +31,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     while dataLength != dataLengthEcho:
         
         connection.send(struct.pack(headerFormat, dataLength))
-        msg = connection.recv(4)
+        msg = connection.recv(4, socket.MSG_WAITALL)
         dataLengthEcho = struct.unpack(headerFormat, msg)[0]
 
     connection.send(
@@ -54,9 +54,9 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
         log(f"  Sent chunk {i+1}/{numChunks} with length {len(chunk)}")
 
     # see if chunks were properly received
-    msg = connection.recv(headerSize)
+    msg = connection.recv(headerSize, socket.MSG_WAITALL)
     msgLength = struct.unpack(headerFormat, msg)[0]
-    msg = connection.recv(msgLength)
+    msg = connection.recv(msgLength, socket.MSG_WAITALL)
     properlyReceived = pickle.loads(msg) == "chunksGood"
     if properlyReceived:
         log(f"  Chunks were properly received")
@@ -66,9 +66,9 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     # re-send stuff if not properly received
     while not properlyReceived:
         # receive list of failed chunks
-        msg = connection.recv(headerSize)
+        msg = connection.recv(headerSize, socket.MSG_WAITALL)
         msgLength = struct.unpack(headerFormat, msg)[0]
-        msg = connection.recv(msgLength)
+        msg = connection.recv(msgLength, socket.MSG_WAITALL)
         failedChunks = pickle.loads(msg)
         log(f"  Got list of failed chunks {failedChunks}")
 
@@ -79,9 +79,9 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
             log(f"  Re-sent {len(dataChunks[chunkNum])} bytes")
 
         # see if chunks were properly received
-        msg = connection.recv(headerSize)
+        msg = connection.recv(headerSize, socket.MSG_WAITALL)
         msgLength = struct.unpack(headerFormat, msg)[0]
-        msg = connection.recv(msgLength)
+        msg = connection.recv(msgLength, socket.MSG_WAITALL)
         properlyReceived = pickle.loads(msg) == "chunksGood"
 
         if properlyReceived:
@@ -92,7 +92,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
 
 def receiveData(connection: socket.socket, dataType: str, addr):
     log("RECEIVING DATA")
-    msg = connection.recv(headerSize)
+    msg = connection.recv(headerSize, socket.MSG_WAITALL)
     msgLength = struct.unpack(headerFormat, msg)[0]
     if not msg:
         log(f"  Received empty message from {addr}")
@@ -100,13 +100,13 @@ def receiveData(connection: socket.socket, dataType: str, addr):
 
     log(f"  Sending header echo")
     connection.send(struct.pack(headerFormat, msgLength))
-    msg = connection.recv(headerSize)
+    msg = connection.recv(headerSize, socket.MSG_WAITALL)
     echoLength = struct.unpack(headerFormat, msg)[0]
     log(f"  Received header echo {echoLength}")
 
     while echoLength != 0:
         log(f"  Header verification failed. Re-requesting header.")
-        msg = connection.recv(headerSize)
+        msg = connection.recv(headerSize, socket.MSG_WAITALL)
         echoLength = struct.unpack(headerFormat, msg)[0]
         log(f"  Received header echo {echoLength}")
         if echoLength == 0:
@@ -126,7 +126,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
             chunkLength = remainderBytes
         else:
             chunkLength = BUFFER_SIZE
-        msg = connection.recv(chunkLength)
+        msg = connection.recv(chunkLength, socket.MSG_WAITALL)
         messages.append(msg)
         log(
             f"  Received chunk [{i+1}/{numChunks}] with length {len(msg)}/{chunkLength}"
@@ -161,7 +161,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
 
         # Receive those chunks
         for i, (chunkNum, chunkLength) in enumerate(failedChunks):
-            msg = connection.recv(chunkLength)
+            msg = connection.recv(chunkLength, socket.MSG_WAITALL)
             messages[chunkNum] = msg
             log(f"  Received re-requested chunk [{i+1}/{len(failedChunks)}] ({len(msg)} bytes)")
 
