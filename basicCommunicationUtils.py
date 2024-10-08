@@ -94,17 +94,17 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         return msg, False
 
     log(f"  Sending header echo")
-    connection.send(msg)
+    connection.send(struct.pack(headerFormat, msgLength))
     msg = connection.recv(headerSize)
     echoLength = struct.unpack(headerFormat, msg)[0]
     log(f"  Received header verification")
 
     while echoLength != 0:
+        msgLength = echoLength
         log(f"  Header verification failed. Re-requesting header.")
         msg = connection.recv(headerSize)
-        msgLength = struct.unpack(headerFormat, msg)[0]
-        msg = connection.recv(headerSize)
         echoLength = struct.unpack(headerFormat, msg)[0]
+        connection.send(struct.pack(headerFormat, msgLength))
 
     log(f"  Receiving message with length {msgLength}")
 
