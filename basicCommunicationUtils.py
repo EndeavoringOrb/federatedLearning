@@ -168,6 +168,8 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         data = msg.decode("utf-8")
     elif dataType == "np.uint8":
         data = np.frombuffer(msg, np.uint8)
+    elif dataType == "np.uint16":
+        data = np.frombuffer(msg, np.uint16)
     elif dataType == "np.float32":
         data = np.frombuffer(msg, np.float32)
     elif dataType == "pickle":

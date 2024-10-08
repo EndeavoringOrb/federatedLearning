@@ -63,6 +63,25 @@ class ChatModel:
                 state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
         return correct / numTokens
 
+    def getLossAndAccuracy(self, weights, tokens, hiddenSize, vocabSize):
+        loss = 0.0
+        accuracy = 0.0
+        numTokens = 0
+
+        for chunk in tokens:
+            state = weights[:hiddenSize]
+            numTokens += len(chunk)
+
+            for token in chunk:
+                token = token.astype(np.uint32)
+                preds = self.getPred(weights, state, hiddenSize, vocabSize)
+                accuracy += np.argmax(preds) == token
+                preds = np.exp(preds - np.max(preds))
+                loss -= np.log(preds[token] / np.sum(preds))
+                state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
+
+        return loss / numTokens, accuracy / numTokens
+
     def preprocess(self, weights, tokens, hiddenSize, vocabSize):
         state = weights[:hiddenSize]
         for token in tokens:

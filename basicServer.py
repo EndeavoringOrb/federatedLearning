@@ -4,29 +4,25 @@ from threading import Lock
 from basicCommunicationUtils import *
 from utilitiesModel import *
 from utilitiesMisc import *
-from time import sleep
-
-
-def dataLoader():
-    while True:
-        yield np.random.randint(0, 128, 10).astype(np.uint8)
-
+from time import sleep, perf_counter
+from redditData import tokenLoader
 
 config = {
-    "timePerStep": 0.5,
+    "timePerStep": 10,
     "learningRate": 0.01,
     "sigma": 0.1,
-    "hiddenSize": 128,
+    "hiddenSize": 32,
     "vocabSize": 128,
     "beta1": 0.9,
     "beta2": 0.999,
     "stepNum": 0,
     "modelType": "chat",
+    "checkPointTime": 60,
 }
-seedHigh = 1_000_000
+seedHigh = 4_000_000
 
 
-tokenLoader = dataLoader()
+tokens = tokenLoader(config["vocabSize"], True)
 if config["modelType"] == "critic":
     model = ChatCritic()
 else:
@@ -39,10 +35,51 @@ all_rewards = []
 reward_info = []
 stepNum = 0
 
+lastCheckPointTime = perf_counter()
+
 clients = []
 newClients = []
 
 threadLock = Lock()
+
+
+def getWeights():
+    global clients
+    global config
+    global stepNum
+    global optimizerValues
+    global weights
+    global lastCheckPointTime
+
+    print(f"Getting weights from {clients[0][1]}")
+    # request weights
+    sendBytes(clients[0][0], "need weights".encode("utf-8"), clients[0][1])
+
+    # get weights
+    data, valid = receiveData(clients[0][0], "np.float32", clients[0][1])
+    if valid:
+        print(f"[{clients[0][1]}] Sent weights")
+        config["stepNum"] = int(data[0])
+        stepNum = config["stepNum"]
+        optimizerValues = data[1 : 1 + 2 * nParams]
+        weights = data[1 + 2 * nParams :]
+        np.save(
+            f"weights/model.npy",
+            np.concatenate(
+                (
+                    [
+                        config["hiddenSize"],
+                        config["vocabSize"],
+                    ],
+                    weights,
+                )
+            ),
+        )
+        lastCheckPointTime = perf_counter()
+        return True
+    else:
+        print(f"Failed to get weights")
+        return False
 
 
 def handleClients():
@@ -59,40 +96,33 @@ def handleClients():
 
         # send info to new clients
         if len(newClients) > 0:
+            gotWeights = False
             if len(clients) > 0:
                 print(f"Getting weights from {clients[0][1]}")
-                # request weights
-                sendBytes(clients[0][0], "need weights".encode("utf-8"), clients[0][1])
+                gotWeights = getWeights()
 
-                # get weights
-                data, valid = receiveData(clients[0][0], "np.float32", clients[0][1])
-                if valid:
-                    print(f"[{clients[0][1]}] Sent weights")
-                    config["stepNum"] = int(data[0])
-                    stepNum = config["stepNum"]
-                    optimizerValues = data[1 : 1 + 2 * nParams]
-                    weights = data[1 + 2 * nParams :]
-                    np.save(f"weights/model.npy", weights)
-                else:
-                    print(f"Failed to get weights")
-                    break
-
-            print(f"Sending weights to {len(newClients)} clients")
-            for client in newClients:
-                # send weights
-                sendBytes(client[0], weights.tobytes(), client[1])
-                # send tokens
-                sendBytes(client[0], next(tokenLoader).tobytes(), client[1])
-                # send optimizer state
-                sendBytes(client[0], optimizerValues.tobytes(), client[1])
-                # send config
-                sendBytes(client[0], pickle.dumps(config), client[1])
-                # send random seed
-                sendBytes(
-                    client[0], pickle.dumps(np.random.randint(0, seedHigh)), client[1]
-                )
-            clients.extend(newClients)
-            newClients = []
+            if len(clients) == 0 or gotWeights:
+                print(f"Sending weights to {len(newClients)} clients")
+                for client in newClients:
+                    # send weights
+                    sendBytes(client[0], weights.tobytes(), client[1])
+                    # send tokens
+                    sendBytes(client[0], next(tokens).tobytes(), client[1])
+                    # send optimizer state
+                    sendBytes(client[0], optimizerValues.tobytes(), client[1])
+                    # send config
+                    sendBytes(client[0], pickle.dumps(config), client[1])
+                    # send random seed
+                    sendBytes(
+                        client[0],
+                        pickle.dumps(np.random.randint(0, seedHigh)),
+                        client[1],
+                    )
+                clients.extend(newClients)
+                newClients = []
+        elif perf_counter() - lastCheckPointTime > config["checkPointTime"]:
+            print(f"Getting weights from {clients[0][1]}")
+            gotWeights = getWeights()
 
         for client in clients:
             sendBytes(client[0], "dont need weights".encode("utf-8"), client[1])
@@ -158,7 +188,7 @@ def start_server():
         # Accept a connection
         client_socket, addr = server.accept()
         newClients.append([client_socket, addr])
-        print(f"[ACTIVE CONNECTIONS] {threading.active_count() - 1}")
+        print(f"[ACTIVE CONNECTIONS] {len(clients) + len(newClients)}")
 
 
 if __name__ == "__main__":

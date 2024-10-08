@@ -2,7 +2,6 @@ import socket
 from basicCommunicationUtils import *
 from utilitiesModel import *
 from time import perf_counter
-import os
 
 
 def start_client():
@@ -21,7 +20,7 @@ def start_client():
     weights = weights.copy()
     grad = np.zeros_like(weights)
     # receive tokens
-    tokens, valid = receiveData(client, "np.uint8", "SERVER")
+    tokens, valid = receiveData(client, "np.uint16", "SERVER")
     # receive optimizer state
     optimizerValues, valid = receiveData(client, "np.float32", "SERVER")
     # receive config
@@ -74,7 +73,7 @@ def start_client():
             )  # just receive the "dont need weights" that is sent to everyone
 
         # Run trials
-        print(f"Running trials for {config['timePerStep']}s")
+        print(f"Running trials for {config['timePerStep']}s on {len(tokens)} tokens")
         start = perf_counter()
         rewards = [seed]
         np.random.seed(seed)
@@ -112,8 +111,8 @@ def start_client():
         grad = optimizer.getGrad(grad)
         weights -= grad
 
-        #fileNum = len(os.listdir("weights"))
-        #np.save(f"weights/{fileNum}.npy", weights)
+        # fileNum = len(os.listdir("weights"))
+        # np.save(f"weights/{fileNum}.npy", weights)
 
     client.close()
 
