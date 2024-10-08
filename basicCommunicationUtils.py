@@ -30,6 +30,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
         connection.send(struct.pack(headerFormat, dataLength))
         msg = connection.recv(4)
         dataLengthEcho = struct.unpack(headerFormat, msg)[0]
+        log(f"  Received header echo {dataLengthEcho}")
 
     connection.send(
         struct.pack(headerFormat, 0)
@@ -97,14 +98,15 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     connection.send(struct.pack(headerFormat, msgLength))
     msg = connection.recv(headerSize)
     echoLength = struct.unpack(headerFormat, msg)[0]
-    log(f"  Received header verification")
+    log(f"  Received header echo {echoLength}")
 
     while echoLength != 0:
         msgLength = echoLength
         log(f"  Header verification failed. Re-requesting header.")
         msg = connection.recv(headerSize)
         echoLength = struct.unpack(headerFormat, msg)[0]
-        connection.send(struct.pack(headerFormat, msgLength))
+        log(f"  Received header echo {echoLength}")
+        connection.send(struct.pack(headerFormat, echoLength))
 
     log(f"  Receiving message with length {msgLength}")
 
