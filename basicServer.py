@@ -122,7 +122,7 @@ def handleClients():
                             client[1],
                         )
                     except Exception as e:
-                        print(f"[ERROR] (sending normalized rewards) {e}")
+                        print(f"[ERROR] (sending initial data) {e}")
                         clientRemoveList.append(client)
                 for client in clientRemoveList:
                     client[0].close()
@@ -137,7 +137,7 @@ def handleClients():
             try:
                 sendBytes(client[0], "dont need weights".encode("utf-8"), client[1])
             except Exception as e:
-                print(f"[ERROR] (sending normalized rewards) {e}")
+                print(f"[ERROR] (sending dont need weights) {e}")
                 clientRemoveList.append(client)
         for client in clientRemoveList:
             client[0].close()
@@ -147,16 +147,24 @@ def handleClients():
         print(f"Waiting for rewards")
         all_rewards = []
         reward_info = []
+        clientRemoveList = []
         for client in clients:
-            rewards, valid = receiveData(client[0], "np.float32", client[1])
-            if valid:
-                print(f"[{client[1]}] Sent {len(rewards) - 1:,} rewards")
-                seed = rewards[0].astype(np.uint32)
-                with threadLock:
-                    all_rewards.extend(rewards[1:])
-                    reward_info.append((len(rewards), seed))
-            else:
-                print(f"[{client[1]}] Failed sending rewards")
+            try:
+                rewards, valid = receiveData(client[0], "np.float32", client[1])
+                if valid:
+                    print(f"[{client[1]}] Sent {len(rewards) - 1:,} rewards")
+                    seed = rewards[0].astype(np.uint32)
+                    with threadLock:
+                        all_rewards.extend(rewards[1:])
+                        reward_info.append((len(rewards), seed))
+                else:
+                    print(f"[{client[1]}] Failed sending rewards")
+            except Exception as e:
+                print(f"[ERROR] (getting rewards) {e}")
+                clientRemoveList.append(client)
+        for client in clientRemoveList:
+            client[0].close()
+            clients.remove(client)
 
         # process rewards
         numRewards = len(all_rewards)

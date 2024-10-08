@@ -25,16 +25,19 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     msg = connection.recv(4)
     dataLengthEcho = struct.unpack(headerFormat, msg)[0]
 
-    while dataLength != dataLengthEcho:
+    if dataLength != dataLengthEcho:
         log(f"  Header not correctly received. Resending header.")
+
+    while dataLength != dataLengthEcho:
+        
         connection.send(struct.pack(headerFormat, dataLength))
         msg = connection.recv(4)
         dataLengthEcho = struct.unpack(headerFormat, msg)[0]
-        log(f"  Received header echo {dataLengthEcho}")
 
     connection.send(
         struct.pack(headerFormat, 0)
     )  # send message to confirm it was correctly received
+    log(f"  Sent validation header")
 
     # chunk data
     log(f"  Chunking bytes")
@@ -73,6 +76,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
         log(f"  Re-sending failed chunks")
         for chunkNum in failedChunks:
             connection.send(dataChunks[chunkNum])
+            log(f"  Re-sent {len(dataChunks[chunkNum])} bytes")
 
         # see if chunks were properly received
         msg = connection.recv(headerSize)
@@ -159,7 +163,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         for i, (chunkNum, chunkLength) in enumerate(failedChunks):
             msg = connection.recv(chunkLength)
             messages[chunkNum] = msg
-            log(f"  Received re-requested chunk [{i+1}/{len(failedChunks)}]")
+            log(f"  Received re-requested chunk [{i+1}/{len(failedChunks)}] ({len(msg)} bytes)")
 
         # Check for any chunks that were not received fully
         log(f"  Validating chunks were fully received")
