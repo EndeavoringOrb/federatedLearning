@@ -5,14 +5,14 @@ from basicCommunicationUtils import *
 from utilitiesModel import *
 from utilitiesMisc import *
 from time import sleep, perf_counter
-from redditData import tokenLoader
+from shakespeareData import tokenLoader
 
 config = {
-    "timePerStep": 10,
+    "timePerStep": 5,
     "learningRate": 0.01,
     "sigma": 0.1,
-    "hiddenSize": 32,
-    "vocabSize": 128,
+    "hiddenSize": 16,
+    "vocabSize": 74,
     "beta1": 0.9,
     "beta2": 0.999,
     "stepNum": 0,

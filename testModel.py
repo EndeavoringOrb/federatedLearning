@@ -84,7 +84,7 @@ print(tokenizer.chars)
 tokens = []
 for i, item in enumerate(tokenLoader(vocabSize, False)):
     tokens.append(item)
-    if i == 99:
+    if i == 5:
         break
 print(f"Testing {len(tokens):,} chunks ({sum([len(chunk) for chunk in tokens]):,} tokens)")
 loss, accuracy = model.getLossAndAccuracy(

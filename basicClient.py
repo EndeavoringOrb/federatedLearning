@@ -5,30 +5,39 @@ from time import perf_counter
 
 
 def start_client():
+    print("Started client")
     # Server settings
     server_ip = "130.215.211.30"
     server_port = 55551
 
     # Create a socket object
+    print("Connecting to server")
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect((server_ip, server_port))
     connected = True
+    print("Connected")
 
     # Receive initial data
     # receive weights
+    print("Waiting to receive weights")
     weights, valid = receiveData(client, "np.float32", "SERVER")
     weights = weights.copy()
     grad = np.zeros_like(weights)
     # receive tokens
+    print("Waiting to receive tokens")
     tokens, valid = receiveData(client, "np.uint16", "SERVER")
     # receive optimizer state
+    print("Waiting to receive optimizer values")
     optimizerValues, valid = receiveData(client, "np.float32", "SERVER")
     # receive config
+    print("Waiting to receive config")
     config, valid = receiveData(client, "pickle", "SERVER")
     # receive random seed
+    print("Waiting to receive random seed")
     seed, valid = receiveData(client, "pickle", "SERVER")
     print(f"Received initial data")
 
+    print("Initializing optimizer")
     optimizer = AdamOptimizer(
         weights.shape[0],
         config["learningRate"],
@@ -42,6 +51,7 @@ def start_client():
         optimizer.beta1Power *= optimizer.beta1
         optimizer.beta2Power *= optimizer.beta2
 
+    print("Initializing model")
     if config["modelType"] == "critic":
         model = ChatCritic()
         tokens = [
