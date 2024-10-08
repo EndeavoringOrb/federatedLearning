@@ -9,9 +9,11 @@ headerSize = 4
 DEBUG = True
 BUFFER_SIZE = 1024
 
+
 def log(message):
     if DEBUG:
         print(f"{currentTime()}|{message}", flush=True)
+
 
 def sendBytes(connection: socket.socket, data: bytes, addr):
     log(f"SENDING DATA")
@@ -33,8 +35,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     log(f"  Sending chunks")
     for i, chunk in enumerate(dataChunks):
         connection.send(chunk)
-        if DEBUG:
-            print(f"  Sent chunk {i+1}/{numChunks} with length {len(chunk)}")
+        log(f"  Sent chunk {i+1}/{numChunks} with length {len(chunk)}")
 
     # see if chunks were properly received
     msg = connection.recv(headerSize)
@@ -54,12 +55,10 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
         msgLength = struct.unpack(headerFormat, msg)[0]
         msg = connection.recv(msgLength)
         failedChunks = pickle.loads(msg)
-        if DEBUG:
-            print(f"  Got list of failed chunks {failedChunks}")
+        log(f"  Got list of failed chunks {failedChunks}")
 
         # re-send failed chunks
-        if DEBUG:
-            print(f"  Re-sending failed chunks")
+        log(f"  Re-sending failed chunks")
         for chunkNum in failedChunks:
             connection.send(dataChunks[chunkNum])
 
@@ -69,11 +68,10 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
         msg = connection.recv(msgLength)
         properlyReceived = pickle.loads(msg) == "chunksGood"
 
-        if DEBUG:
-            if properlyReceived:
-                print(f"  Chunks were properly received")
-            else:
-                print(f"  Chunks were NOT properly received")
+        if properlyReceived:
+            log(f"  Chunks were properly received")
+        else:
+            log(f"  Chunks were NOT properly received")
 
 
 def receiveData(connection: socket.socket, dataType: str, addr):
@@ -99,8 +97,9 @@ def receiveData(connection: socket.socket, dataType: str, addr):
             chunkLength = BUFFER_SIZE
         msg = connection.recv(chunkLength)
         messages.append(msg)
-        if DEBUG:
-            print(f"  Received chunk [{i+1}/{numChunks}] with length {len(msg)}/{chunkLength}")
+        log(
+            f"  Received chunk [{i+1}/{numChunks}] with length {len(msg)}/{chunkLength}"
+        )
 
     # Check for any chunks that were not received fully
     log(f"  Validating chunks were fully received")
@@ -118,10 +117,9 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     connection.send(data)
 
     while len(failedChunks) > 0:
-        if DEBUG:
-            print(
-                f"  {len(failedChunks)} chunks not fully received, re-requesting chunks {failedChunks}"
-            )
+        log(
+            f"  {len(failedChunks)} chunks not fully received, re-requesting chunks {failedChunks}"
+        )
         # Re-request any chunks that failed
         data = pickle.dumps(
             [item[0] for item in failedChunks]
@@ -134,12 +132,10 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         for i, (chunkNum, chunkLength) in enumerate(failedChunks):
             msg = connection.recv(chunkLength)
             messages[chunkNum] = msg
-            if DEBUG:
-                print(f"  Received re-requested chunk [{i+1}/{len(failedChunks)}]")
+            log(f"  Received re-requested chunk [{i+1}/{len(failedChunks)}]")
 
         # Check for any chunks that were not received fully
-        if DEBUG:
-            print(f"  Validating chunks were fully received")
+        log(f"  Validating chunks were fully received")
         failedChunks = []
         for i in range(numChunks - 1):
             if len(messages[i]) != BUFFER_SIZE:
