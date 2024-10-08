@@ -17,7 +17,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     # send header
     connection.send(struct.pack(headerFormat, dataLength))
     if DEBUG:
-        print(f"  Sent header")
+        print(f"  Sent header specifying length of {dataLength} bytes")
 
     # chunk data
     if DEBUG:
@@ -40,15 +40,15 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     msg = connection.recv(headerSize)
     msgLength = struct.unpack(headerFormat, msg)[0]
     msg = connection.recv(msgLength)
-    properlyReceived = pickle.loads(msg)
+    properlyReceived = pickle.loads(msg) == "chunksGood"
     if DEBUG:
-        if properlyReceived == "chunksGood":
+        if properlyReceived:
             print(f"  Chunks were properly received")
         else:
             print(f"  Chunks were NOT properly received")
 
     # re-send stuff if not properly received
-    while properlyReceived != "chunksGood":
+    while not properlyReceived:
         # receive list of failed chunks
         msg = connection.recv(headerSize)
         msgLength = struct.unpack(headerFormat, msg)[0]
@@ -67,7 +67,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
         msg = connection.recv(headerSize)
         msgLength = struct.unpack(headerFormat, msg)[0]
         msg = connection.recv(msgLength)
-        properlyReceived = pickle.loads(msg)
+        properlyReceived = pickle.loads(msg) == "chunksGood"
 
         if DEBUG:
             if properlyReceived:
@@ -93,6 +93,8 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     messages = []
     numChunks = (msgLength + BUFFER_SIZE - 1) // BUFFER_SIZE
     remainderBytes = msgLength - (msgLength // BUFFER_SIZE) * BUFFER_SIZE
+    if DEBUG:
+        print(f"Remainder bytes: {remainderBytes}")
     for i in range(numChunks):
         if i == numChunks - 1 and remainderBytes > 0:
             chunkLength = remainderBytes

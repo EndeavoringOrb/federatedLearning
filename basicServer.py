@@ -98,11 +98,10 @@ def handleClients():
         if len(newClients) > 0:
             gotWeights = False
             if len(clients) > 0:
-                print(f"Getting weights from {clients[0][1]}")
                 gotWeights = getWeights()
 
             if len(clients) == 0 or gotWeights:
-                print(f"Sending weights to {len(newClients)} clients")
+                print(f"Sending weights to {len(newClients)} new clients")
                 for client in newClients:
                     # send weights
                     sendBytes(client[0], weights.tobytes(), client[1])
@@ -121,7 +120,6 @@ def handleClients():
                 clients.extend(newClients)
                 newClients = []
         elif perf_counter() - lastCheckPointTime > config["checkPointTime"]:
-            print(f"Getting weights from {clients[0][1]}")
             gotWeights = getWeights()
 
         for client in clients:
@@ -144,7 +142,6 @@ def handleClients():
 
         # process rewards
         numRewards = len(all_rewards)
-        print(f"Processing rewards ({numRewards}) {currentTime()}")
         if numRewards == 1:
             normalizedRewards = np.zeros(1)
             print(f"Mean Reward: {0}")
@@ -154,7 +151,6 @@ def handleClients():
             normalizedRewards = (np.array(all_rewards) - mean) / np.std(all_rewards)
 
         print()
-        print(f"Sending rewards and info for next iteration {currentTime()}")
         seeds = np.random.randint(0, seedHigh, len(clients))
         normalizedRewardsBytes = normalizedRewards.astype(np.float32).tobytes()
         for i, client in enumerate(clients):
@@ -162,8 +158,12 @@ def handleClients():
                 "reward_info": reward_info,
                 "seed": seeds[i],
             }
-            sendBytes(client[0], normalizedRewardsBytes, client[1])
-            sendBytes(client[0], pickle.dumps(response), client[1])
+            try:
+                sendBytes(client[0], normalizedRewardsBytes, client[1])
+                sendBytes(client[0], pickle.dumps(response), client[1])
+            except Exception as e:
+                print(f"[ERROR] (sending normalized rewards) {e}")
+                continue
             print(f"Sent rewards and info [{i+1}/{len(clients)}] {currentTime()}")
 
 
