@@ -8,10 +8,10 @@ from time import sleep, perf_counter
 from shakespeareData import tokenLoader
 
 config = {
-    "timePerStep": 5,
-    "learningRate": 0.01,
+    "timePerStep": 1,
+    "learningRate": 1e-2,
     "sigma": 0.1,
-    "hiddenSize": 64,
+    "hiddenSize": 32,
     "vocabSize": 74,
     "beta1": 0.9,
     "beta2": 0.999,
