@@ -21,6 +21,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
 
     # send header
     connection.send(struct.pack(headerFormat, dataLength))
+    connection.send(struct.pack(headerFormat, dataLength))
     log(f"  Sent header specifying length of {dataLength} bytes")
 
     # chunk data
@@ -80,7 +81,14 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         log(f"  Received empty message from {addr}")
         return msg, False
 
-    msgLength = struct.unpack(headerFormat, msg)[0]
+    msgLength1 = struct.unpack(headerFormat, msg)[0]
+    msg = connection.recv(headerSize)
+    msgLength2 = struct.unpack(headerFormat, msg)[0]
+    assert (
+        msgLength1 == msgLength2
+    ), "Message lengths in duplicate headers do not match."
+
+    msgLength = msgLength1
     log(f"  Receiving message with length {msgLength}")
 
     # Receive message bytes in chunks
