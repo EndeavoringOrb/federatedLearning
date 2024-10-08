@@ -11,7 +11,7 @@ config = {
     "timePerStep": 5,
     "learningRate": 0.01,
     "sigma": 0.1,
-    "hiddenSize": 16,
+    "hiddenSize": 32,
     "vocabSize": 74,
     "beta1": 0.9,
     "beta2": 0.999,

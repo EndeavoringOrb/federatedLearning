@@ -5,7 +5,7 @@ import numpy as np
 
 headerFormat = "I"
 headerSize = 4
-DEBUG = False
+DEBUG = True
 BUFFER_SIZE = 1024
 
 
@@ -48,7 +48,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
             print(f"  Chunks were NOT properly received")
 
     # re-send stuff if not properly received
-    while not properlyReceived:
+    while properlyReceived != "chunksGood":
         # receive list of failed chunks
         msg = connection.recv(headerSize)
         msgLength = struct.unpack(headerFormat, msg)[0]
@@ -101,7 +101,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         msg = connection.recv(chunkLength)
         messages.append(msg)
         if DEBUG:
-            print(f"  Received chunk [{i+1}/{numChunks}]")
+            print(f"  Received chunk [{i+1}/{numChunks}] with length {len(msg)}/{chunkLength}")
 
     # Check for any chunks that were not received fully
     if DEBUG:
@@ -122,7 +122,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     while len(failedChunks) > 0:
         if DEBUG:
             print(
-                f"  {len(failedChunks)} chunks not fully received, re-requesting chunks"
+                f"  {len(failedChunks)} chunks not fully received, re-requesting chunks {failedChunks}"
             )
         # Re-request any chunks that failed
         data = pickle.dumps(
