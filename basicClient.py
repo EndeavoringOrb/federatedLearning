@@ -119,14 +119,15 @@ def start_client():
         grad.fill(0)
         for nTrials, trialSeed in reward_info:
             np.random.seed(trialSeed)
-            for trial in range(nTrials - 1):
+            mulVal = config["sigma"] * (1.0 / nTrials) # normalize the grad by the number of samples per example
+            for trial in range(nTrials):
                 grad += (
                     np.random.randn(weights.shape[0])
-                    * config["sigma"]
+                    * mulVal
                     * normalizedRewards[rewardNum]
                 )
                 rewardNum += 1
-        grad *= 1.0 / rewardNum
+        grad *= 1.0 / len(reward_info)
         grad = optimizer.getGrad(grad)
         weights -= grad
 

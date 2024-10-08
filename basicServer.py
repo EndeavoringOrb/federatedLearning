@@ -11,7 +11,7 @@ config = {
     "timePerStep": 5,
     "learningRate": 0.01,
     "sigma": 0.1,
-    "hiddenSize": 32,
+    "hiddenSize": 64,
     "vocabSize": 74,
     "beta1": 0.9,
     "beta2": 0.999,
@@ -108,9 +108,7 @@ def handleClients():
                         # send weights
                         sendBytes(client[0], weights.tobytes(), client[1])
                         # send tokens
-                        newTokens = next(tokens)
-                        print(f"Sending tokens: {newTokens} (length {len(newTokens)})")
-                        sendBytes(client[0], newTokens.tobytes(), client[1])
+                        sendBytes(client[0], next(tokens).tobytes(), client[1])
                         # send optimizer state
                         sendBytes(client[0], optimizerValues.tobytes(), client[1])
                         # send config
@@ -156,7 +154,7 @@ def handleClients():
                     seed = rewards[0].astype(np.uint32)
                     with threadLock:
                         all_rewards.extend(rewards[1:])
-                        reward_info.append((len(rewards), seed))
+                        reward_info.append((len(rewards) - 1, seed))
                 else:
                     print(f"[{client[1]}] Failed sending rewards")
             except Exception as e:
@@ -168,6 +166,7 @@ def handleClients():
 
         # process rewards
         numRewards = len(all_rewards)
+        print(f"Total # Rewards: {numRewards:,}")
         if numRewards == 1:
             normalizedRewards = np.zeros(1)
             print(f"Mean Reward: {0}")
