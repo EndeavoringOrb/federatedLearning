@@ -86,7 +86,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     msgLength2 = struct.unpack(headerFormat, msg)[0]
     assert (
         msgLength1 == msgLength2
-    ), "Message lengths in duplicate headers do not match."
+    ), f"Message lengths ({msgLength1} and {msgLength2}) in duplicate headers do not match."
 
     msgLength = msgLength1
     log(f"  Receiving message with length {msgLength}")

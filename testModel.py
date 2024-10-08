@@ -1,5 +1,5 @@
 from utilitiesModel import *
-from redditData import tokenLoader, Tokenizer
+from shakespeareData import tokenLoader, Tokenizer
 from time import perf_counter
 
 modelType = "chat"
@@ -83,9 +83,9 @@ print(tokenizer.chars)
 
 tokens = []
 for i, item in enumerate(tokenLoader(vocabSize, False)):
-    tokens.append(item)
-    if i == 5:
+    if i == 100:
         break
+    tokens.append(item)
 print(f"Testing {len(tokens):,} chunks ({sum([len(chunk) for chunk in tokens]):,} tokens)")
 loss, accuracy = model.getLossAndAccuracy(
     weights, tokens, hiddenSize, vocabSize

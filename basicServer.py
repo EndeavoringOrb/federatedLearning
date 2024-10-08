@@ -156,7 +156,11 @@ def handleClients():
         else:
             mean = np.mean(all_rewards)
             print(f"Mean Reward: {mean}")
-            normalizedRewards = (np.array(all_rewards) - mean) / np.std(all_rewards)
+            if mean == np.nan:
+                normalizedRewards = np.zeros(1)
+                reward_info = [(1, 0)]
+            else:
+                normalizedRewards = (np.array(all_rewards) - mean) / np.std(all_rewards)
 
         print()
         seeds = np.random.randint(0, seedHigh, len(clients))
