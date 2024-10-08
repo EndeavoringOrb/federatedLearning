@@ -102,21 +102,31 @@ def handleClients():
 
             if len(clients) == 0 or gotWeights:
                 print(f"Sending weights to {len(newClients)} new clients")
+                clientRemoveList = []
                 for client in newClients:
-                    # send weights
-                    sendBytes(client[0], weights.tobytes(), client[1])
-                    # send tokens
-                    sendBytes(client[0], next(tokens).tobytes(), client[1])
-                    # send optimizer state
-                    sendBytes(client[0], optimizerValues.tobytes(), client[1])
-                    # send config
-                    sendBytes(client[0], pickle.dumps(config), client[1])
-                    # send random seed
-                    sendBytes(
-                        client[0],
-                        pickle.dumps(np.random.randint(0, seedHigh)),
-                        client[1],
-                    )
+                    try:
+                        # send weights
+                        sendBytes(client[0], weights.tobytes(), client[1])
+                        # send tokens
+                        newTokens = next(tokens)
+                        print(f"Sending tokens: {newTokens} (length {len(newTokens)})")
+                        sendBytes(client[0], newTokens.tobytes(), client[1])
+                        # send optimizer state
+                        sendBytes(client[0], optimizerValues.tobytes(), client[1])
+                        # send config
+                        sendBytes(client[0], pickle.dumps(config), client[1])
+                        # send random seed
+                        sendBytes(
+                            client[0],
+                            pickle.dumps(np.random.randint(0, seedHigh)),
+                            client[1],
+                        )
+                    except Exception as e:
+                        print(f"[ERROR] (sending normalized rewards) {e}")
+                        clientRemoveList.append(client)
+                for client in clientRemoveList:
+                    client[0].close()
+                    newClients.remove(client)
                 clients.extend(newClients)
                 newClients = []
         elif perf_counter() - lastCheckPointTime > config["checkPointTime"]:
@@ -130,8 +140,8 @@ def handleClients():
                 print(f"[ERROR] (sending normalized rewards) {e}")
                 clientRemoveList.append(client)
         for client in clientRemoveList:
+            client[0].close()
             clients.remove(client)
-
 
         # get rewards
         print(f"Waiting for rewards")
@@ -154,13 +164,15 @@ def handleClients():
             normalizedRewards = np.zeros(1)
             print(f"Mean Reward: {0}")
         else:
-            mean = np.mean(all_rewards)
+            normalizedRewards = np.array(all_rewards)
+            mean = normalizedRewards.mean()
             print(f"Mean Reward: {mean}")
-            if mean == np.nan:
+            if np.isnan(mean):
                 normalizedRewards = np.zeros(1)
                 reward_info = [(1, 0)]
+                print(f"Setting mean to 0 because of nan value")
             else:
-                normalizedRewards = (np.array(all_rewards) - mean) / np.std(all_rewards)
+                normalizedRewards = (normalizedRewards - mean) / np.std(all_rewards)
 
         print()
         seeds = np.random.randint(0, seedHigh, len(clients))
@@ -179,8 +191,9 @@ def handleClients():
                 clientRemoveList.append(client)
                 continue
             print(f"Sent rewards and info [{i+1}/{len(clients)}] {currentTime()}")
-        
+
         for client in clientRemoveList:
+            client[0].close()
             clients.remove(client)
 
 
