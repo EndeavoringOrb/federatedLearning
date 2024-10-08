@@ -122,8 +122,16 @@ def handleClients():
         elif perf_counter() - lastCheckPointTime > config["checkPointTime"]:
             gotWeights = getWeights()
 
+        clientRemoveList = []
         for client in clients:
-            sendBytes(client[0], "dont need weights".encode("utf-8"), client[1])
+            try:
+                sendBytes(client[0], "dont need weights".encode("utf-8"), client[1])
+            except Exception as e:
+                print(f"[ERROR] (sending normalized rewards) {e}")
+                clientRemoveList.append(client)
+        for client in clientRemoveList:
+            clients.remove(client)
+
 
         # get rewards
         print(f"Waiting for rewards")
@@ -153,6 +161,7 @@ def handleClients():
         print()
         seeds = np.random.randint(0, seedHigh, len(clients))
         normalizedRewardsBytes = normalizedRewards.astype(np.float32).tobytes()
+        clientRemoveList = []
         for i, client in enumerate(clients):
             response = {
                 "reward_info": reward_info,
@@ -163,8 +172,12 @@ def handleClients():
                 sendBytes(client[0], pickle.dumps(response), client[1])
             except Exception as e:
                 print(f"[ERROR] (sending normalized rewards) {e}")
+                clientRemoveList.append(client)
                 continue
             print(f"Sent rewards and info [{i+1}/{len(clients)}] {currentTime()}")
+        
+        for client in clientRemoveList:
+            clients.remove(client)
 
 
 def start_server():

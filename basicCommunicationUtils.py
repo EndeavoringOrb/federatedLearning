@@ -2,26 +2,27 @@ import socket
 import struct
 import pickle
 import numpy as np
+from utilitiesMisc import currentTime
 
 headerFormat = "I"
 headerSize = 4
 DEBUG = True
 BUFFER_SIZE = 1024
 
+def log(message):
+    if DEBUG:
+        print(f"{currentTime()}|{message}", flush=True)
 
 def sendBytes(connection: socket.socket, data: bytes, addr):
-    if DEBUG:
-        print(f"SENDING DATA")
+    log(f"SENDING DATA")
     dataLength = len(data)
 
     # send header
     connection.send(struct.pack(headerFormat, dataLength))
-    if DEBUG:
-        print(f"  Sent header specifying length of {dataLength} bytes")
+    log(f"  Sent header specifying length of {dataLength} bytes")
 
     # chunk data
-    if DEBUG:
-        print(f"  Chunking bytes")
+    log(f"  Chunking bytes")
     dataChunks = []
     while data:
         dataChunks.append(data[:BUFFER_SIZE])
@@ -29,8 +30,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
     numChunks = len(dataChunks)
 
     # send chunks
-    if DEBUG:
-        print(f"  Sending chunks")
+    log(f"  Sending chunks")
     for i, chunk in enumerate(dataChunks):
         connection.send(chunk)
         if DEBUG:
@@ -55,7 +55,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
         msg = connection.recv(msgLength)
         failedChunks = pickle.loads(msg)
         if DEBUG:
-            print(f"  Got list of failed chunks")
+            print(f"  Got list of failed chunks {failedChunks}")
 
         # re-send failed chunks
         if DEBUG:
@@ -77,8 +77,7 @@ def sendBytes(connection: socket.socket, data: bytes, addr):
 
 
 def receiveData(connection: socket.socket, dataType: str, addr):
-    if DEBUG:
-        print("RECEIVING DATA")
+    log("RECEIVING DATA")
     msg = connection.recv(headerSize)
     if not msg:
         if DEBUG:
@@ -86,15 +85,13 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         return msg, False
 
     msgLength = struct.unpack(headerFormat, msg)[0]
-    if DEBUG:
-        print(f"  Receiving message with length {msgLength}")
+    log(f"  Receiving message with length {msgLength}")
 
     # Receive message bytes in chunks
     messages = []
     numChunks = (msgLength + BUFFER_SIZE - 1) // BUFFER_SIZE
     remainderBytes = msgLength - (msgLength // BUFFER_SIZE) * BUFFER_SIZE
-    if DEBUG:
-        print(f"Remainder bytes: {remainderBytes}")
+    log(f"Remainder bytes: {remainderBytes}")
     for i in range(numChunks):
         if i == numChunks - 1 and remainderBytes > 0:
             chunkLength = remainderBytes
@@ -106,8 +103,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
             print(f"  Received chunk [{i+1}/{numChunks}] with length {len(msg)}/{chunkLength}")
 
     # Check for any chunks that were not received fully
-    if DEBUG:
-        print(f"  Validating chunks were fully received")
+    log(f"  Validating chunks were fully received")
     failedChunks = []
     for i in range(numChunks - 1):
         if len(messages[i]) != BUFFER_SIZE:
@@ -162,8 +158,7 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     for message in messages:
         msg += message
 
-    if DEBUG:
-        print(f"  Received {len(msg)}/{msgLength} bytes in {numChunks} chunks")
+    log(f"  Received {len(msg)}/{msgLength} bytes in {numChunks} chunks")
 
     # decode based on datatype
     if dataType == "text":
