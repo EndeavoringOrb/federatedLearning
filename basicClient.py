@@ -27,6 +27,7 @@ def start_client():
     config, valid = receiveData(client, "pickle", "SERVER")
     # receive random seed
     seed, valid = receiveData(client, "pickle", "SERVER")
+    print(f"Received initial data")
 
     optimizer = AdamOptimizer(
         weights.shape[0],
@@ -52,6 +53,7 @@ def start_client():
     while connected:
         print(weights)
         # Receive weight request
+        print(f"Checking for weights request")
         request, valid = receiveData(client, "text", "SERVER")
         if request == "need weights":
             data = (
@@ -67,6 +69,7 @@ def start_client():
                 .tobytes()
             )
             sendBytes(client, data, "SERVER")
+            print(f"Sent weights to server")
 
             request, valid = receiveData(
                 client, "text", "SERVER"
@@ -76,6 +79,7 @@ def start_client():
         print(f"Running trials for {config['timePerStep']}s on {len(tokens)} tokens")
         start = perf_counter()
         rewards = [seed]
+        numTrials = 0
         np.random.seed(seed)
         while perf_counter() - start < config["timePerStep"]:
             loss = model.getLoss(
@@ -85,17 +89,22 @@ def start_client():
                 config["vocabSize"],
             )
             rewards.append(loss)
+            numTrials += 1
         rewards = np.array(rewards).astype(np.float32).tobytes()
         sendBytes(client, rewards, "SERVER")
+        print(f"Sent {numTrials:,} rewards to server")
 
         # Receive normalize rewards
+        print(f"Waiting for normalized rewards")
         normalizedRewards, valid = receiveData(client, "np.float32", "SERVER")
         data, valid = receiveData(client, "pickle", "SERVER")
+        print(f"Received normalized rewards")
 
         reward_info = data["reward_info"]
         seed = data["seed"]
 
         # Update weights
+        print(f"Updating weights")
         rewardNum = 0
         grad.fill(0)
         for nTrials, trialSeed in reward_info:
@@ -110,9 +119,6 @@ def start_client():
         grad *= 1.0 / rewardNum
         grad = optimizer.getGrad(grad)
         weights -= grad
-
-        # fileNum = len(os.listdir("weights"))
-        # np.save(f"weights/{fileNum}.npy", weights)
 
     client.close()
 
