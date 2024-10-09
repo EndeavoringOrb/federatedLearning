@@ -2,8 +2,12 @@ import socket
 from basicCommunicationUtils import *
 from utilitiesModel import *
 from time import perf_counter
+from line_profiler import profile
+
+profile.disable()
 
 
+@profile
 def start_client():
     print("Started client")
     # Server settings
@@ -26,6 +30,14 @@ def start_client():
     # receive tokens
     print("Waiting to receive tokens")
     tokens, valid = receiveData(client, "np.uint16", "SERVER")
+    # receive tokens info
+    print("Waiting to receive token info")
+    tokenInfo, valid = receiveData(client, "pickle", "SERVER")
+    batchTokens = []
+    for length in tokenInfo:
+        batchTokens.append(tokens[:length])
+        tokens = tokens[length:]
+    totalNumTokens = sum(tokenInfo)
     # receive optimizer state
     print("Waiting to receive optimizer values")
     optimizerValues, valid = receiveData(client, "np.float32", "SERVER")
@@ -60,6 +72,8 @@ def start_client():
     else:
         model = ChatModel()
 
+    start = perf_counter()
+
     while connected:
         print(weights)
         # Receive weight request
@@ -86,15 +100,14 @@ def start_client():
             )  # just receive the "dont need weights" that is sent to everyone
 
         # Run trials
-        print(f"Running trials for {config['timePerStep']}s on {len(tokens)} tokens")
-        start = perf_counter()
+        print(f"Running trials for {config['timePerStep']}s on {totalNumTokens} tokens")
         rewards = [seed]
         numTrials = 0
         np.random.seed(seed)
         while perf_counter() - start < config["timePerStep"]:
             loss = model.getLoss(
                 weights + np.random.randn(weights.shape[0]) * config["sigma"],
-                [tokens],
+                batchTokens,
                 config["hiddenSize"],
                 config["vocabSize"],
             )
@@ -109,6 +122,7 @@ def start_client():
         normalizedRewards, valid = receiveData(client, "np.float32", "SERVER")
         data, valid = receiveData(client, "pickle", "SERVER")
         print(f"Received normalized rewards")
+        start = perf_counter()
 
         reward_info = data["reward_info"]
         seed = data["seed"]
@@ -119,7 +133,9 @@ def start_client():
         grad.fill(0)
         for nTrials, trialSeed in reward_info:
             np.random.seed(trialSeed)
-            mulVal = config["sigma"] / float(nTrials) # normalize the grad by the number of samples per example
+            mulVal = config["sigma"] / float(
+                nTrials
+            )  # normalize the grad by the number of samples per example
             for trial in range(nTrials):
                 grad += (
                     np.random.randn(weights.shape[0])

@@ -8,7 +8,7 @@ from time import sleep, perf_counter
 from shakespeareData import tokenLoader
 
 config = {
-    "timePerStep": 1,
+    "timePerStep": 5,
     "learningRate": 1e-2,
     "sigma": 0.1,
     "hiddenSize": 32,
@@ -18,11 +18,13 @@ config = {
     "stepNum": 0,
     "modelType": "chat",
     "checkPointTime": 60,
+    "batchSize": 32,
 }
 seedHigh = 4_000_000
 
 
-tokens = tokenLoader(config["vocabSize"], True)
+tokens = tokenLoader(config["vocabSize"], config["batchSize"])
+
 if config["modelType"] == "critic":
     model = ChatCritic()
 else:
@@ -108,7 +110,10 @@ def handleClients():
                         # send weights
                         sendBytes(client[0], weights.tobytes(), client[1])
                         # send tokens
-                        sendBytes(client[0], next(tokens).tobytes(), client[1])
+                        batchTokens, batchInfo = next(tokens)
+                        sendBytes(client[0], batchTokens.tobytes(), client[1])
+                        # send tokens info
+                        sendBytes(client[0], pickle.dumps(batchInfo), client[1])
                         # send optimizer state
                         sendBytes(client[0], optimizerValues.tobytes(), client[1])
                         # send config
@@ -224,6 +229,7 @@ def start_server():
     while True:
         # Accept a connection
         client_socket, addr = server.accept()
+        client_socket.settimeout(13.45)
         newClients.append([client_socket, addr])
         print(f"[ACTIVE CONNECTIONS] {len(clients) + len(newClients)}")
 

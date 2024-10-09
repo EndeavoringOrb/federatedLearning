@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import json
 import os
 
@@ -70,12 +71,18 @@ class Tokenizer:
                 text += self.itos[token]
         return text
 
-
-def tokenLoader(vocabSize, repeat):
+def tokenLoader(vocabSize, batchSize):
     tokenizer = Tokenizer(vocabSize)
 
+    tokens = [np.array(tokenizer.tokenize(text, True)).astype(np.uint16) for text in textLoader()]
+
     while True:
-        for text in textLoader():
-            yield np.array(tokenizer.tokenize(text, True)).astype(np.uint16)
-        if not repeat:
-            break
+        indices = np.random.choice(len(tokens), (batchSize,))
+        batchTokens = []
+        batchInfo = []
+        for idx in indices:
+            idxTokens = tokens[idx]
+            batchTokens.append(idxTokens)
+            batchInfo.append(len(idxTokens))
+        batchTokens = np.concatenate(batchTokens)
+        yield batchTokens, batchInfo

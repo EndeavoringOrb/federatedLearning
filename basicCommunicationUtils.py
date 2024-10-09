@@ -6,7 +6,7 @@ from utilitiesMisc import currentTime
 
 headerFormat = "I"
 headerSize = 4
-DEBUG = False
+DEBUG = True
 BUFFER_SIZE = 1024
 
 
@@ -14,16 +14,18 @@ def log(message):
     if DEBUG:
         print(f"{currentTime()}|{message}", flush=True)
 
+
 def recvall(sock: socket.socket, size):
     received_chunks = []
     remaining = size
     while remaining > 0:
         received = sock.recv(min(remaining, BUFFER_SIZE))
         if not received:
-            raise Exception('unexpected EOF')
+            raise Exception("unexpected EOF")
         received_chunks.append(received)
         remaining -= len(received)
-    return b''.join(received_chunks)
+    return b"".join(received_chunks)
+
 
 def sendBytes(connection: socket.socket, data: bytes, addr):
     log(f"SENDING DATA")
@@ -172,7 +174,9 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         for i, (chunkNum, chunkLength) in enumerate(failedChunks):
             msg = recvall(connection, chunkLength)
             messages[chunkNum] = msg
-            log(f"  Received re-requested chunk [{i+1}/{len(failedChunks)}] ({len(msg)} bytes)")
+            log(
+                f"  Received re-requested chunk [{i+1}/{len(failedChunks)}] ({len(msg)} bytes)"
+            )
 
         # Check for any chunks that were not received fully
         log(f"  Validating chunks were fully received")

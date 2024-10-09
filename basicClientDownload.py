@@ -3,7 +3,6 @@ import struct
 import pickle
 import numpy as np
 from datetime import datetime
-from utilitiesMisc import currentTime
 
 headerFormat = "I"
 headerSize = 4
