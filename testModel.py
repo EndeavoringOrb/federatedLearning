@@ -83,7 +83,7 @@ print(tokenizer.chars)
 
 tokens = []
 for i, item in enumerate(tokenLoader(vocabSize, False)):
-    if i == 100:
+    if i == 6:
         break
     tokens.append(item)
 print(f"Testing {len(tokens):,} chunks ({sum([len(chunk) for chunk in tokens]):,} tokens)")
