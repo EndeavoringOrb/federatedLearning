@@ -6,7 +6,7 @@ from utilitiesMisc import currentTime
 
 headerFormat = "I"
 headerSize = 4
-DEBUG = True
+DEBUG = False
 BUFFER_SIZE = 1024
 
 

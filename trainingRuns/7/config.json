@@ -1,0 +1,1 @@
+{"timePerStep": 10, "learningRate": 0.01, "sigma": 0.01, "hiddenSize": 32, "vocabSize": 74, "nLayers": 2, "beta1": 0.9, "beta2": 0.999, "stepNum": 0, "modelType": "chat", "checkPointTime": 60, "batchSize": 8}

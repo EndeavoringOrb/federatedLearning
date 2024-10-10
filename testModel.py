@@ -6,6 +6,8 @@ modelType = "chat"
 
 if modelType == "critic":
     model = ChatCritic()
+elif modelType == "minGru":
+    model = MinGruChat()
 else:
     model = ChatModel()
 
@@ -47,14 +49,16 @@ def testChatModel():
     )
 
     start = perf_counter()
-    state = model.preprocess(weights, tokens, hiddenSize, vocabSize)
+    state = model.preprocess(weights, tokens, hiddenSize, vocabSize, nLayers)
     end = perf_counter()
     print(
         f"Preprocessed {len(tokens)} tokens in {1000*(end-start):.3f}ms ({int(len(tokens)/(end-start)):,} tok/sec)"
     )
 
     start = perf_counter()
-    newTokens = model.generate(weights, state, hiddenSize, vocabSize, tokenizer.stopToken)
+    newTokens = model.generate(
+        weights, state, hiddenSize, vocabSize, nLayers, tokenizer.stopToken
+    )
     end = perf_counter()
     print(
         f"Generated {len(newTokens)} tokens in {1000*(end-start):.3f}ms ({int(len(newTokens)/(end-start)):,} tok/sec)"
@@ -65,31 +69,34 @@ def testChatModel():
     print()
 
 
-weights = np.load("weights/model.npy")
+weights = np.load("trainingRuns/11/model.npy")
 
 hiddenSize = int(weights[0])
 vocabSize = int(weights[1])
-weights = weights[2:]
+nLayers = int(weights[2])
+weights = weights[3:]
 
 tokenizer = Tokenizer(vocabSize)
 
 print(f"Loaded model")
 print(f"Hidden Size: {hiddenSize}")
 print(f"Vocab Size: {vocabSize}")
+print(f"# Layers: {nLayers}")
 print(f"# Parameters: {weights.shape[0]}")
 
 print(f"Vocab:")
 print(tokenizer.chars)
 
-tokens = []
-for i, item in enumerate(tokenLoader(vocabSize, False)):
-    if i == 10:
-        break
-    tokens.append(item)
-print(f"Testing {len(tokens):,} chunks ({sum([len(chunk) for chunk in tokens]):,} tokens)")
-loss, accuracy = model.getLossAndAccuracy(
-    weights, tokens, hiddenSize, vocabSize
-)
+print("Loading tokens")
+tokens, tokenInfo = next(tokenLoader(vocabSize, 128))
+batchTokens = []
+for length in tokenInfo:
+    batchTokens.append(tokens[:length])
+    tokens = tokens[length:]
+totalNumTokens = sum(tokenInfo)
+
+print(f"Testing {len(tokenInfo):,} random chunks ({sum(tokenInfo):,} tokens)")
+loss, accuracy = model.getLossAndAccuracy(weights, batchTokens, hiddenSize, vocabSize, nLayers)
 print(f"Model Avg. Loss: {loss:.3e}")
 print(f"Model Accuracy: {100*accuracy:.3f}%")
 

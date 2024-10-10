@@ -2,8 +2,12 @@ import socket
 from basicCommunicationUtils import *
 from utilitiesModel import *
 from time import perf_counter
+from line_profiler import profile
+
+profile.disable()
 
 
+@profile
 def start_client():
     print("Started client")
     # Server settings
@@ -65,6 +69,8 @@ def start_client():
         tokens = [
             [tokens, 1],
         ]
+    elif config["modelType"] == "minGru":
+        model = MinGruChat()
     else:
         model = ChatModel()
 
@@ -95,20 +101,39 @@ def start_client():
                 client, "text", "SERVER"
             )  # just receive the "dont need weights" that is sent to everyone
 
+        # Receieve new tokens
+        # receive tokens
+        print("Waiting to receive tokens")
+        tokens, valid = receiveData(client, "np.uint16", "SERVER")
+        # receive tokens info
+        print("Waiting to receive token info")
+        tokenInfo, valid = receiveData(client, "pickle", "SERVER")
+        # update batchTokens if we were actually sent new tokens
+        if tokenInfo != []:
+            batchTokens = []
+            for length in tokenInfo:
+                batchTokens.append(tokens[:length])
+                tokens = tokens[length:]
+            totalNumTokens = sum(tokenInfo)
+
         # Run trials
         print(f"Running trials for {config['timePerStep']}s on {totalNumTokens} tokens")
         rewards = [seed]
         numTrials = 0
         np.random.seed(seed)
+        trialStart = perf_counter()
         while perf_counter() - start < config["timePerStep"]:
             loss = model.getLoss(
                 weights + np.random.randn(weights.shape[0]) * config["sigma"],
                 batchTokens,
                 config["hiddenSize"],
                 config["vocabSize"],
+                config["nLayers"],
             )
             rewards.append(loss)
             numTrials += 1
+        trialEnd = perf_counter()
+        print(f"{(len(rewards)*totalNumTokens)/(trialEnd - trialStart)} tok/sec")
         rewards = np.array(rewards).astype(np.float32).tobytes()
         sendBytes(client, rewards, "SERVER")
         print(f"Sent {numTrials:,} rewards to server")

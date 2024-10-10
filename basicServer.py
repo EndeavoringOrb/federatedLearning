@@ -6,19 +6,23 @@ from utilitiesModel import *
 from utilitiesMisc import *
 from time import sleep, perf_counter
 from shakespeareData import tokenLoader
+import json
+import os
 
 config = {
-    "timePerStep": 5,
+    "timePerStep": 15,
     "learningRate": 1e-2,
-    "sigma": 0.1,
+    "sigma": 0.01,
     "hiddenSize": 32,
-    "vocabSize": 74,
+    "vocabSize": 76,
+    "nLayers": 3,
     "beta1": 0.9,
     "beta2": 0.999,
     "stepNum": 0,
     "modelType": "chat",
     "checkPointTime": 60,
-    "batchSize": 32,
+    "newTokensInterval": 5,  # send new tokens every N steps
+    "batchSize": 8,
 }
 seedHigh = 4_000_000
 
@@ -27,9 +31,12 @@ tokens = tokenLoader(config["vocabSize"], config["batchSize"])
 
 if config["modelType"] == "critic":
     model = ChatCritic()
+elif config["modelType"] == "minGru":
+    model = MinGruChat()
 else:
     model = ChatModel()
-weights = model.getWeights(config["hiddenSize"], config["vocabSize"])
+
+weights = model.getWeights(config["hiddenSize"], config["vocabSize"], config["nLayers"])
 nParams = weights.shape[0]
 optimizerValues = np.zeros(nParams * 2).astype(np.float32)
 newWeights = False
@@ -45,7 +52,7 @@ newClients = []
 threadLock = Lock()
 
 
-def getWeights():
+def getWeights(currentTrainingRun):
     global clients
     global config
     global stepNum
@@ -66,12 +73,13 @@ def getWeights():
         optimizerValues = data[1 : 1 + 2 * nParams]
         weights = data[1 + 2 * nParams :]
         np.save(
-            f"weights/model.npy",
+            f"trainingRuns/{currentTrainingRun}/model.npy",
             np.concatenate(
                 (
                     [
                         config["hiddenSize"],
                         config["vocabSize"],
+                        config["nLayers"],
                     ],
                     weights,
                 )
@@ -85,22 +93,36 @@ def getWeights():
 
 
 def handleClients():
+    global clients
     global newClients
     global weights
     global optimizerValues
     global config
     global stepNum
 
+    if len(os.listdir("trainingRuns")) == 0:
+        currentTrainingRun = 0
+    else:
+        currentTrainingRun = max([int(item) for item in os.listdir("trainingRuns")]) + 1
+    os.makedirs(f"trainingRuns/{currentTrainingRun}")
+
+    with open(
+        f"trainingRuns/{currentTrainingRun}/config.json", "w", encoding="utf-8"
+    ) as f:
+        json.dump(config, f)
+
     while True:
         # wait for some clients
         while len(clients) + len(newClients) == 0:
-            sleep(0.1)
+            sleep(0.05)
+
+        stepNum += 1
 
         # send info to new clients
         if len(newClients) > 0:
             gotWeights = False
             if len(clients) > 0:
-                gotWeights = getWeights()
+                gotWeights = getWeights(currentTrainingRun)
 
             if len(clients) == 0 or gotWeights:
                 print(f"Sending weights to {len(newClients)} new clients")
@@ -133,7 +155,7 @@ def handleClients():
                 clients.extend(newClients)
                 newClients = []
         elif perf_counter() - lastCheckPointTime > config["checkPointTime"]:
-            gotWeights = getWeights()
+            gotWeights = getWeights(currentTrainingRun)
 
         clientRemoveList = []
         for client in clients:
@@ -141,6 +163,31 @@ def handleClients():
                 sendBytes(client[0], "dont need weights".encode("utf-8"), client[1])
             except Exception as e:
                 print(f"[ERROR] (sending dont need weights) {e}")
+                clientRemoveList.append(client)
+        for client in clientRemoveList:
+            client[0].close()
+            clients.remove(client)
+
+        # send new tokens if it is time to
+        clientRemoveList = []
+        for client in clients:
+            try:
+                if stepNum % config["newTokensInterval"] == 0:
+                    # send tokens
+                    batchTokens, batchInfo = next(tokens)
+                    sendBytes(client[0], batchTokens.tobytes(), client[1])
+                    # send tokens info
+                    sendBytes(client[0], pickle.dumps(batchInfo), client[1])
+                else:
+                    # send tokens
+                    batchTokens, batchInfo = next(tokens)
+                    sendBytes(
+                        client[0], np.array([]).astype(np.uint16).tobytes(), client[1]
+                    )
+                    # send tokens info
+                    sendBytes(client[0], pickle.dumps([]), client[1])
+            except Exception as e:
+                print(f"[ERROR] (sending new tokens) {e}")
                 clientRemoveList.append(client)
         for client in clientRemoveList:
             client[0].close()
@@ -174,6 +221,7 @@ def handleClients():
         print(f"Total # Rewards: {numRewards:,}")
         if numRewards == 1:
             normalizedRewards = np.zeros(1)
+            mean = 0
             print(f"Mean Reward: {0}")
         else:
             normalizedRewards = np.array(all_rewards)
@@ -208,6 +256,11 @@ def handleClients():
             client[0].close()
             clients.remove(client)
 
+        with open(
+            f"trainingRuns/{currentTrainingRun}/loss.txt", "a", encoding="utf-8"
+        ) as f:
+            f.write(f"{mean}\n")
+
 
 def start_server():
     # Server settings
@@ -229,7 +282,7 @@ def start_server():
     while True:
         # Accept a connection
         client_socket, addr = server.accept()
-        client_socket.settimeout(13.45)
+        client_socket.settimeout(config["timePerStep"] + 5)
         newClients.append([client_socket, addr])
         print(f"[ACTIVE CONNECTIONS] {len(clients) + len(newClients)}")
 
