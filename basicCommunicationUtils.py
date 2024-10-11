@@ -2,12 +2,16 @@ import socket
 import struct
 import pickle
 import numpy as np
-from utilitiesMisc import currentTime
+from datetime import datetime
 
 headerFormat = "I"
 headerSize = 4
 DEBUG = False
 BUFFER_SIZE = 1024
+
+
+def currentTime():
+    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 
 def log(message):
