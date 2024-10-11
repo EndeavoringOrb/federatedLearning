@@ -1,8 +1,4 @@
 import numpy as np
-from line_profiler import profile
-
-profile.disable()
-
 
 def softmax(x):
     x = np.exp(x - np.max(x))  # Subtract max for numerical stability
@@ -129,7 +125,6 @@ class ChatModel:
     def __init__(self) -> None:
         pass
 
-    @profile
     def getPred(self, weights, state, hiddenSize, vocabSize, nLayers):
         out = state @ weights[
             hiddenSize
@@ -144,7 +139,6 @@ class ChatModel:
         ].reshape(hiddenSize * 4, vocabSize)
         return out
 
-    @profile
     def getNextState(self, weights, state, token, hiddenSize, vocabSize, nLayers):
         for i in range(nLayers):
             state = np.tanh(
@@ -169,7 +163,6 @@ class ChatModel:
             )
         return state
 
-    @profile
     def getLoss(self, weights, tokens, hiddenSize, vocabSize, nLayers):
         loss = 0.0
         numTokens = 0
@@ -189,7 +182,6 @@ class ChatModel:
 
         return loss / numTokens
 
-    @profile
     def getLossBatched(self, weights, tokens, hiddenSize, vocabSize, nLayers):
         loss = 0.0
         numTokens = 0

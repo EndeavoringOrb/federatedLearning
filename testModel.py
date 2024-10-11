@@ -98,7 +98,7 @@ print(f"Vocab:")
 print(tokenizer.chars)
 
 print("Loading tokens")
-tokens, tokenInfo = next(tokenLoader(vocabSize, 1024))
+tokens, tokenInfo = next(tokenLoader(vocabSize, 8))
 batchTokens = []
 for length in tokenInfo:
     batchTokens.append(tokens[:length])

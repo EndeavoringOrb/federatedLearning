@@ -10,7 +10,7 @@ import json
 import os
 
 config = {
-    "timePerStep": 45,
+    "timePerStep": 15,
     "learningRate": 1e-3,
     "sigma": 1e-3,
     "hiddenSize": 64,
