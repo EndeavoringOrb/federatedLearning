@@ -26,7 +26,7 @@ def start_client():
     print("Waiting to receive weights")
     weights, valid = receiveData(client, "np.float32", "SERVER")
     weights = weights.copy()
-    grad = np.zeros_like(weights)
+    grad: np.ndarray = np.zeros_like(weights)
     # receive tokens
     print("Waiting to receive tokens")
     tokens, valid = receiveData(client, "np.uint16", "SERVER")
@@ -133,6 +133,7 @@ def start_client():
             rewards.append(loss)
             numTrials += 1
         trialEnd = perf_counter()
+        start = trialEnd
         print(f"{(len(rewards)*totalNumTokens)/(trialEnd - trialStart)} tok/sec")
         rewards = np.array(rewards).astype(np.float32).tobytes()
         sendBytes(client, rewards, "SERVER")
@@ -143,7 +144,6 @@ def start_client():
         normalizedRewards, valid = receiveData(client, "np.float32", "SERVER")
         data, valid = receiveData(client, "pickle", "SERVER")
         print(f"Received normalized rewards")
-        start = perf_counter()
 
         reward_info = data["reward_info"]
         seed = data["seed"]
@@ -152,20 +152,18 @@ def start_client():
         print(f"Updating weights")
         rewardNum = 0
         grad.fill(0)
+        totalNTrials = float(sum([item[0] for item in reward_info]))
         for nTrials, trialSeed in reward_info:
             np.random.seed(trialSeed)
-            mulVal = config["sigma"] / float(
-                nTrials
-            )  # normalize the grad by the number of samples per example
             for trial in range(nTrials):
-                grad += (
-                    np.random.randn(weights.shape[0])
-                    * mulVal
-                    * normalizedRewards[rewardNum]
-                )
+                grad += np.random.randn(weights.shape[0]) * normalizedRewards[rewardNum]
                 rewardNum += 1
-        grad *= 1.0 / len(reward_info)
-        grad = optimizer.getGrad(grad)
+        grad *= 1.0 / float(totalNTrials)
+        if config["optimizer"] == "adam":
+            grad = optimizer.getGrad(grad)
+        else:
+            grad *= config["learningRate"]
+        print(f"Grad Norm: {np.sqrt((grad**2).sum())}")
         weights -= grad
 
     client.close()

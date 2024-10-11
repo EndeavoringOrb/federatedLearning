@@ -189,6 +189,31 @@ class ChatModel:
 
         return loss / numTokens
 
+    @profile
+    def getLossBatched(self, weights, tokens, hiddenSize, vocabSize, nLayers):
+        loss = 0.0
+        numTokens = 0
+        batchSize = len(tokens)
+
+        state = weights[:hiddenSize].reshape(1, 16).repeat(batchSize, 0)
+        maxLength = max([len(chunk) for chunk in tokens])
+        currentIndices = [i for i in range(batchSize)]
+
+        for i in range(maxLength):
+            currentIndices = [idx for idx in currentIndices if len(tokens[idx]) > i]
+            currentTokens = [tokens[idx][i] for idx in currentIndices]
+            state = state[currentIndices]
+            preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+            maxVals = np.max(preds, -1)
+            preds = np.exp(preds - maxVals)
+            for j, token in enumerate(currentTokens):
+                loss -= np.log([j, token] / np.sum(preds[j]))
+            state = self.getNextStateBatched(
+                weights, state, currentTokens, hiddenSize, vocabSize, nLayers
+            )
+
+        return loss / numTokens
+
     def getAccuracy(self, weights, tokens, hiddenSize, vocabSize, nLayers):
         state = weights[:hiddenSize]
         correct = 0.0
@@ -280,7 +305,7 @@ class ChatModel:
                 * (
                     hiddenSize * hiddenSize + hiddenSize * vocabSize
                 )  # hh and ih for each layer
-                + hiddenSize * (hiddenSize * 4) # ho1
+                + hiddenSize * (hiddenSize * 4)  # ho1
                 + (hiddenSize * 4) * vocabSize  # ho2
             ).astype(np.float32)
             * 0.02
