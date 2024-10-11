@@ -2,12 +2,7 @@ import socket
 from basicCommunicationUtils import *
 from utilitiesModel import *
 from time import perf_counter
-from line_profiler import profile
 
-profile.disable()
-
-
-@profile
 def start_client():
     print("Started client")
     # Server settings
