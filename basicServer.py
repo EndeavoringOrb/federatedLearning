@@ -23,7 +23,7 @@ config = {
     "modelType": "chat",
     "checkPointTime": 60,
     "newTokensInterval": 5,  # send new tokens every N steps
-    "batchSize": 2,
+    "batchSize": 16,
 }
 seedHigh = 4_000_000
 

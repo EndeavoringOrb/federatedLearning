@@ -3,11 +3,15 @@ from basicCommunicationUtils import *
 from utilitiesModel import *
 from time import perf_counter
 
+
 def start_client():
     print("Started client")
     # Server settings
     server_ip = "130.215.211.30"
     server_port = 55551
+
+    # Init timer
+    start = perf_counter()
 
     # Create a socket object
     print("Connecting to server")
@@ -69,7 +73,7 @@ def start_client():
     else:
         model = ChatModel()
 
-    start = perf_counter()
+    firstStep = True
 
     while connected:
         print(weights)
@@ -117,7 +121,7 @@ def start_client():
         numTrials = 0
         np.random.seed(seed)
         trialStart = perf_counter()
-        while perf_counter() - start < config["timePerStep"]:
+        while perf_counter() - start < config["timePerStep"] and not firstStep:
             loss = model.getLoss(
                 weights + np.random.randn(weights.shape[0]) * config["sigma"],
                 batchTokens,
@@ -128,7 +132,6 @@ def start_client():
             rewards.append(loss)
             numTrials += 1
         trialEnd = perf_counter()
-        start = trialEnd
         print(f"{(len(rewards)*totalNumTokens)/(trialEnd - trialStart)} tok/sec")
         rewards = np.array(rewards).astype(np.float32).tobytes()
         sendBytes(client, rewards, "SERVER")
@@ -139,6 +142,7 @@ def start_client():
         normalizedRewards, valid = receiveData(client, "np.float32", "SERVER")
         data, valid = receiveData(client, "pickle", "SERVER")
         print(f"Received normalized rewards")
+        start = perf_counter()
 
         reward_info = data["reward_info"]
         seed = data["seed"]
@@ -160,6 +164,8 @@ def start_client():
             grad *= config["learningRate"]
         print(f"Grad Norm: {np.sqrt((grad**2).sum())}")
         weights -= grad
+
+        firstStep = False
 
     client.close()
 
