@@ -1,7 +1,14 @@
+import subprocess
+
+process = subprocess.Popen(["pip", "install", "numpy"])
+process.wait()
+
+import socket
 import socket
 import struct
 import pickle
 import numpy as np
+from time import perf_counter
 from datetime import datetime
 
 headerFormat = "I"
@@ -9,12 +16,15 @@ headerSize = 4
 DEBUG = False
 BUFFER_SIZE = 1024
 
+
 def currentTime():
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
 
 def log(message):
     if DEBUG:
         print(f"{currentTime()}|{message}", flush=True)
+
 
 def recvall(sock: socket.socket, size):
     received_chunks = []
@@ -22,10 +32,11 @@ def recvall(sock: socket.socket, size):
     while remaining > 0:
         received = sock.recv(min(remaining, BUFFER_SIZE))
         if not received:
-            raise Exception('unexpected EOF')
+            raise Exception("unexpected EOF")
         received_chunks.append(received)
         remaining -= len(received)
-    return b''.join(received_chunks)
+    return b"".join(received_chunks)
+
 
 def sendBytes(connection: socket.socket, data: bytes, addr):
     log(f"SENDING DATA")
@@ -174,7 +185,9 @@ def receiveData(connection: socket.socket, dataType: str, addr):
         for i, (chunkNum, chunkLength) in enumerate(failedChunks):
             msg = recvall(connection, chunkLength)
             messages[chunkNum] = msg
-            log(f"  Received re-requested chunk [{i+1}/{len(failedChunks)}] ({len(msg)} bytes)")
+            log(
+                f"  Received re-requested chunk [{i+1}/{len(failedChunks)}] ({len(msg)} bytes)"
+            )
 
         # Check for any chunks that were not received fully
         log(f"  Validating chunks were fully received")
@@ -215,37 +228,41 @@ def receiveData(connection: socket.socket, dataType: str, addr):
     # return decoded data
     return data, True
 
+
 def softmax(x):
     x = np.exp(x - np.max(x))  # Subtract max for numerical stability
     invSum = 1.0 / np.sum(x)
     return x * invSum
 
 
-class ChatModel:
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
+class MinGruChat:
     def __init__(self) -> None:
         pass
 
     def getPred(self, weights, state, hiddenSize, vocabSize):
-        return state @ weights[
-            hiddenSize + hiddenSize * hiddenSize + hiddenSize * vocabSize :
-        ].reshape(hiddenSize, vocabSize)
+        return state @ weights[hiddenSize + 2 * hiddenSize * vocabSize :].reshape(
+            hiddenSize, vocabSize
+        )
 
     def getNextState(self, weights, state, token, hiddenSize, vocabSize):
-        state = np.tanh(
-            state
-            + state
-            @ weights[hiddenSize : hiddenSize + hiddenSize * hiddenSize].reshape(
-                hiddenSize, hiddenSize
-            )
-            + weights[
-                hiddenSize
-                + hiddenSize * hiddenSize
-                + hiddenSize * token : hiddenSize
-                + hiddenSize * hiddenSize
-                + hiddenSize * (token + 1)
+        z = sigmoid(
+            weights[
+                hiddenSize + hiddenSize * token : hiddenSize + hiddenSize * (token + 1)
             ]
         )
-        return state
+        h_hat = weights[
+            hiddenSize
+            + hiddenSize * vocabSize
+            + hiddenSize * token : hiddenSize
+            + hiddenSize * vocabSize
+            + hiddenSize * (token + 1)
+        ]
+        h = (1 - z) * state + z * h_hat
+        return h
 
     def getLoss(self, weights, tokens, hiddenSize, vocabSize):
         loss = 0.0
@@ -328,8 +345,189 @@ class ChatModel:
 
     def getWeights(self, hiddenSize, vocabSize):
         return (
+            np.random.randn(hiddenSize + 3 * hiddenSize * vocabSize).astype(np.float32)
+            * 0.02
+        )
+
+
+class ChatModel:
+    def __init__(self) -> None:
+        pass
+
+    def getPred(self, weights, state, hiddenSize, vocabSize, nLayers):
+        out = state @ weights[
+            hiddenSize
+            + nLayers * (hiddenSize * hiddenSize + hiddenSize * vocabSize) : hiddenSize
+            + nLayers * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+            + hiddenSize * (hiddenSize * 4)
+        ].reshape(hiddenSize, hiddenSize * 4)
+        out = out @ weights[
+            hiddenSize
+            + nLayers * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+            + hiddenSize * (hiddenSize * 4) :
+        ].reshape(hiddenSize * 4, vocabSize)
+        return out
+
+    def getNextState(self, weights, state, token, hiddenSize, vocabSize, nLayers):
+        for i in range(nLayers):
+            state = np.tanh(
+                state
+                + state
+                @ weights[
+                    hiddenSize
+                    + i
+                    * (hiddenSize * hiddenSize + hiddenSize * vocabSize) : hiddenSize
+                    + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+                    + hiddenSize * hiddenSize
+                ].reshape(hiddenSize, hiddenSize)
+                + weights[
+                    hiddenSize
+                    + hiddenSize * hiddenSize
+                    + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+                    + hiddenSize * token : hiddenSize
+                    + hiddenSize * hiddenSize
+                    + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+                    + hiddenSize * (token + 1)
+                ]
+            )
+        return state
+
+    def getLoss(self, weights, tokens, hiddenSize, vocabSize, nLayers):
+        loss = 0.0
+        numTokens = 0
+
+        for chunk in tokens:
+            state = weights[:hiddenSize]
+            numTokens += len(chunk)
+
+            for token in chunk:
+                token = token.astype(np.uint32)
+                preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+                preds = np.exp(preds - np.max(preds))
+                loss -= np.log(preds[token] / np.sum(preds))
+                state = self.getNextState(
+                    weights, state, token, hiddenSize, vocabSize, nLayers
+                )
+
+        return loss / numTokens
+
+    def getLossBatched(self, weights, tokens, hiddenSize, vocabSize, nLayers):
+        loss = 0.0
+        numTokens = 0
+        batchSize = len(tokens)
+
+        state = weights[:hiddenSize].reshape(1, 16).repeat(batchSize, 0)
+        maxLength = max([len(chunk) for chunk in tokens])
+        currentIndices = [i for i in range(batchSize)]
+
+        for i in range(maxLength):
+            currentIndices = [idx for idx in currentIndices if len(tokens[idx]) > i]
+            currentTokens = [tokens[idx][i] for idx in currentIndices]
+            state = state[currentIndices]
+            preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+            maxVals = np.max(preds, -1)
+            preds = np.exp(preds - maxVals)
+            for j, token in enumerate(currentTokens):
+                loss -= np.log([j, token] / np.sum(preds[j]))
+            state = self.getNextStateBatched(
+                weights, state, currentTokens, hiddenSize, vocabSize, nLayers
+            )
+
+        return loss / numTokens
+
+    def getAccuracy(self, weights, tokens, hiddenSize, vocabSize, nLayers):
+        state = weights[:hiddenSize]
+        correct = 0.0
+        numTokens = 0
+        for chunk in tokens:
+            numTokens += len(chunk)
+            for token in chunk:
+                token = token.astype(np.uint32)
+                preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+                correct += np.argmax(preds) == token
+                state = self.getNextState(
+                    weights, state, token, hiddenSize, vocabSize, nLayers
+                )
+        return correct / numTokens
+
+    def getLossAndAccuracy(self, weights, tokens, hiddenSize, vocabSize, nLayers):
+        loss = 0.0
+        accuracy = 0.0
+        numTokens = 0
+
+        for chunk in tokens:
+            state = weights[:hiddenSize]
+            numTokens += len(chunk)
+
+            for token in chunk:
+                token = token.astype(np.uint32)
+                preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+                accuracy += np.argmax(preds) == token
+                preds = np.exp(preds - np.max(preds))
+                loss -= np.log(preds[token] / np.sum(preds))
+                state = self.getNextState(
+                    weights, state, token, hiddenSize, vocabSize, nLayers
+                )
+
+        return loss / numTokens, accuracy / numTokens
+
+    def preprocess(self, weights: np.ndarray, tokens, hiddenSize, vocabSize, nLayers):
+        state = weights[:hiddenSize]
+        for token in tokens:
+            state = self.getNextState(
+                weights, state, token, hiddenSize, vocabSize, nLayers
+            )
+        return state
+
+    def generate(
+        self,
+        weights,
+        state,
+        hiddenSize,
+        vocabSize,
+        nLayers,
+        stopToken,
+        maxNumTokens=None,
+    ):
+        if state is None:
+            state = weights[:hiddenSize]
+        tokens = []
+        if maxNumTokens == None:
+            while True:
+                tokProbs = softmax(
+                    self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+                )
+                token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
+                if token == stopToken:
+                    return tokens
+                tokens.append(token)
+                state = self.getNextState(
+                    weights, state, token, hiddenSize, vocabSize, nLayers
+                )
+        else:
+            for i in range(maxNumTokens):
+                tokProbs = softmax(
+                    self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+                )
+                token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
+                if token == stopToken:
+                    return tokens
+                tokens.append(token)
+                state = self.getNextState(
+                    weights, state, token, hiddenSize, vocabSize, nLayers
+                )
+        return tokens
+
+    def getWeights(self, hiddenSize, vocabSize, nLayers):
+        return (
             np.random.randn(
-                hiddenSize + hiddenSize * hiddenSize + 2 * hiddenSize * vocabSize
+                hiddenSize  # initial state
+                + nLayers
+                * (
+                    hiddenSize * hiddenSize + hiddenSize * vocabSize
+                )  # hh and ih for each layer
+                + hiddenSize * (hiddenSize * 4)  # ho1
+                + (hiddenSize * 4) * vocabSize  # ho2
             ).astype(np.float32)
             * 0.02
         )
@@ -369,7 +567,7 @@ class ChatCritic:
         return state @ weights[
             hiddenSize + hiddenSize * hiddenSize + hiddenSize * vocabSize :
         ].reshape(hiddenSize, 2)
-    
+
     def getLoss(self, weights, tokens, hiddenSize, vocabSize):
         loss = 0.0
 
@@ -423,18 +621,13 @@ class AdamOptimizer:
     def getGrad(self, grad):
         self.m = self.beta1 * self.m + (1.0 - self.beta1) * grad
         self.v = self.beta2 * self.v + (1.0 - self.beta2) * grad * grad
-        grad = (
-            (self.alpha
-            * self.m
-            * (1.0 / (1.0 - self.beta1Power)))
-            / (np.sqrt(self.v * (1.0 / (1.0 - self.beta2Power))) + self.eps)
+        grad = (self.alpha * self.m * (1.0 / (1.0 - self.beta1Power))) / (
+            np.sqrt(self.v * (1.0 / (1.0 - self.beta2Power))) + self.eps
         )
         self.beta1Power *= self.beta1
         self.beta2Power *= self.beta2
         self.t += 1
         return grad
-
-from time import perf_counter
 
 
 def start_client():
@@ -442,6 +635,9 @@ def start_client():
     # Server settings
     server_ip = "130.215.211.30"
     server_port = 55551
+
+    # Init timer
+    start = perf_counter()
 
     # Create a socket object
     print("Connecting to server")
@@ -455,10 +651,18 @@ def start_client():
     print("Waiting to receive weights")
     weights, valid = receiveData(client, "np.float32", "SERVER")
     weights = weights.copy()
-    grad = np.zeros_like(weights)
+    grad: np.ndarray = np.zeros_like(weights)
     # receive tokens
     print("Waiting to receive tokens")
     tokens, valid = receiveData(client, "np.uint16", "SERVER")
+    # receive tokens info
+    print("Waiting to receive token info")
+    tokenInfo, valid = receiveData(client, "pickle", "SERVER")
+    batchTokens = []
+    for length in tokenInfo:
+        batchTokens.append(tokens[:length])
+        tokens = tokens[length:]
+    totalNumTokens = sum(tokenInfo)
     # receive optimizer state
     print("Waiting to receive optimizer values")
     optimizerValues, valid = receiveData(client, "np.float32", "SERVER")
@@ -490,8 +694,12 @@ def start_client():
         tokens = [
             [tokens, 1],
         ]
+    elif config["modelType"] == "minGru":
+        model = MinGruChat()
     else:
         model = ChatModel()
+
+    firstStep = True
 
     while connected:
         print(weights)
@@ -518,21 +726,39 @@ def start_client():
                 client, "text", "SERVER"
             )  # just receive the "dont need weights" that is sent to everyone
 
+        # Receieve new tokens
+        # receive tokens
+        print("Waiting to receive tokens")
+        tokens, valid = receiveData(client, "np.uint16", "SERVER")
+        # receive tokens info
+        print("Waiting to receive token info")
+        tokenInfo, valid = receiveData(client, "pickle", "SERVER")
+        # update batchTokens if we were actually sent new tokens
+        if tokenInfo != []:
+            batchTokens = []
+            for length in tokenInfo:
+                batchTokens.append(tokens[:length])
+                tokens = tokens[length:]
+            totalNumTokens = sum(tokenInfo)
+
         # Run trials
-        print(f"Running trials for {config['timePerStep']}s on {len(tokens)} tokens")
-        start = perf_counter()
+        print(f"Running trials for {config['timePerStep']}s on {totalNumTokens} tokens")
         rewards = [seed]
         numTrials = 0
         np.random.seed(seed)
-        while perf_counter() - start < config["timePerStep"]:
+        trialStart = perf_counter()
+        while perf_counter() - start < config["timePerStep"] and not firstStep:
             loss = model.getLoss(
                 weights + np.random.randn(weights.shape[0]) * config["sigma"],
-                [tokens],
+                batchTokens,
                 config["hiddenSize"],
                 config["vocabSize"],
+                config["nLayers"],
             )
             rewards.append(loss)
             numTrials += 1
+        trialEnd = perf_counter()
+        print(f"{(len(rewards)*totalNumTokens)/(trialEnd - trialStart)} tok/sec")
         rewards = np.array(rewards).astype(np.float32).tobytes()
         sendBytes(client, rewards, "SERVER")
         print(f"Sent {numTrials:,} rewards to server")
@@ -542,6 +768,7 @@ def start_client():
         normalizedRewards, valid = receiveData(client, "np.float32", "SERVER")
         data, valid = receiveData(client, "pickle", "SERVER")
         print(f"Received normalized rewards")
+        start = perf_counter()
 
         reward_info = data["reward_info"]
         seed = data["seed"]
@@ -550,19 +777,21 @@ def start_client():
         print(f"Updating weights")
         rewardNum = 0
         grad.fill(0)
+        totalNTrials = float(sum([item[0] for item in reward_info]))
         for nTrials, trialSeed in reward_info:
             np.random.seed(trialSeed)
-            mulVal = config["sigma"] / float(nTrials) # normalize the grad by the number of samples per example
             for trial in range(nTrials):
-                grad += (
-                    np.random.randn(weights.shape[0])
-                    * mulVal
-                    * normalizedRewards[rewardNum]
-                )
+                grad += np.random.randn(weights.shape[0]) * normalizedRewards[rewardNum]
                 rewardNum += 1
-        grad *= 1.0 / len(reward_info)
-        grad = optimizer.getGrad(grad)
+        grad *= 1.0 / float(totalNTrials)
+        if config["optimizer"] == "adam":
+            grad = optimizer.getGrad(grad)
+        else:
+            grad *= config["learningRate"]
+        print(f"Grad Norm: {np.sqrt((grad**2).sum())}")
         weights -= grad
+
+        firstStep = False
 
     client.close()
 
