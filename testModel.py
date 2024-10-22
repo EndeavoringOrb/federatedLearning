@@ -70,7 +70,7 @@ def testChatModel():
     print()
 
 
-folder = "trainingRuns/31"
+folder = "trainingRuns/0"
 
 with open(f"{folder}/loss.txt", "r", encoding="utf-8") as f:
     text = f.read().strip()
@@ -101,7 +101,7 @@ print(f"Vocab:")
 print(tokenizer.chars)
 
 print("Loading tokens")
-tokens, tokenInfo = next(tokenLoader(vocabSize, 16))
+tokens, tokenInfo = next(tokenLoader(vocabSize, 32))
 batchTokens = []
 for length in tokenInfo:
     batchTokens.append(tokens[:length])

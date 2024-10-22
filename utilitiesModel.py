@@ -1,4 +1,6 @@
 import numpy as np
+#from line_profiler import profile
+
 
 def softmax(x):
     x = np.exp(x - np.max(x))  # Subtract max for numerical stability
@@ -7,7 +9,10 @@ def softmax(x):
 
 
 def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+    return 1.0 / (1.0 + np.exp(-x))
+
+def relu(x):
+    np.maximum(x, 0, x)
 
 
 class MinGruChat:
@@ -77,9 +82,10 @@ class MinGruChat:
             for token in chunk:
                 token = token.astype(np.uint32)
                 preds = self.getPred(weights, state, hiddenSize, vocabSize)
-                accuracy += np.argmax(preds) == token
                 preds = np.exp(preds - np.max(preds))
-                loss -= np.log(preds[token] / np.sum(preds))
+                prob = preds[token] / np.sum(preds)
+                accuracy += prob
+                loss -= np.log(prob)
                 state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
 
         return loss / numTokens, accuracy / numTokens
@@ -125,6 +131,7 @@ class ChatModel:
     def __init__(self) -> None:
         pass
 
+    #@profile
     def getPred(self, weights, state, hiddenSize, vocabSize, nLayers):
         out = state @ weights[
             hiddenSize
@@ -132,6 +139,7 @@ class ChatModel:
             + nLayers * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
             + hiddenSize * (hiddenSize * 4)
         ].reshape(hiddenSize, hiddenSize * 4)
+        relu(out)
         out = out @ weights[
             hiddenSize
             + nLayers * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
@@ -163,6 +171,34 @@ class ChatModel:
             )
         return state
 
+    #@profile
+    def getNextStateBatched(
+        self, weights, state, tokens, hiddenSize, vocabSize, nLayers
+    ):
+        for i in range(nLayers):
+            np.tanh(
+                state
+                + state
+                @ weights[
+                    hiddenSize
+                    + i
+                    * (hiddenSize * hiddenSize + hiddenSize * vocabSize) : hiddenSize
+                    + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+                    + hiddenSize * hiddenSize
+                ].reshape(hiddenSize, hiddenSize)
+                + weights[
+                    hiddenSize
+                    + hiddenSize * hiddenSize
+                    + i
+                    * (hiddenSize * hiddenSize + hiddenSize * vocabSize) : hiddenSize
+                    + hiddenSize * hiddenSize
+                    + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+                    + hiddenSize * vocabSize
+                ].reshape(vocabSize, hiddenSize)[tokens],
+                state
+            )
+        return state
+
     def getLoss(self, weights, tokens, hiddenSize, vocabSize, nLayers):
         loss = 0.0
         numTokens = 0
@@ -182,24 +218,49 @@ class ChatModel:
 
         return loss / numTokens
 
-    def getLossBatched(self, weights, tokens, hiddenSize, vocabSize, nLayers):
+    #@profile
+    def getLossBatched(
+        self, weights, tokens: list[list], hiddenSize, vocabSize, nLayers
+    ):
         loss = 0.0
-        numTokens = 0
         batchSize = len(tokens)
 
-        state = weights[:hiddenSize].reshape(1, 16).repeat(batchSize, 0)
-        maxLength = max([len(chunk) for chunk in tokens])
-        currentIndices = [i for i in range(batchSize)]
+        state = weights[:hiddenSize].reshape(1, -1).repeat(batchSize, 0)
+        chunkLengths = np.asarray([len(chunk) for chunk in tokens])
+        maxLength = max(chunkLengths)
+        numTokens = sum(chunkLengths)
+        indices = np.arange(batchSize)
 
         for i in range(maxLength):
-            currentIndices = [idx for idx in currentIndices if len(tokens[idx]) > i]
-            currentTokens = [tokens[idx][i] for idx in currentIndices]
-            state = state[currentIndices]
+            # Remove sequences that are finished
+            # TODO: optimize this by doing a nested for loop with the chunkLengths
+            removeIndices: np.ndarray = np.where(chunkLengths == i)[0]
+            if len(removeIndices) > 0:
+                removeIndices[::-1].sort()
+                for idx in removeIndices:
+                    tokens.pop(idx)
+                chunkLengths = np.delete(chunkLengths, removeIndices)
+                state = np.delete(state, removeIndices, axis=0)
+                indices = np.arange(len(chunkLengths))
+
+            # Get tokens for current step
+            currentTokens = [chunk[i] for chunk in tokens]
+
+            # Get preds
             preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
-            maxVals = np.max(preds, -1)
-            preds = np.exp(preds - maxVals)
-            for j, token in enumerate(currentTokens):
-                loss -= np.log([j, token] / np.sum(preds[j]))
+
+            # this maxVals version is more numerically stable, but I don't think the values are going to be very large because of the sigmoid in getPred
+            # maxVals = np.max(preds, -1).reshape(-1, 1)
+            # preds: np.ndarray = np.exp(preds - maxVals)
+            preds: np.ndarray = np.exp(preds)
+
+            # Get loss
+            predsSum = preds.sum(axis=-1)
+            tokenPreds = preds[indices, currentTokens]
+            lossVals = np.log(tokenPreds / predsSum)
+            loss -= lossVals.sum()
+
+            # Get next state
             state = self.getNextStateBatched(
                 weights, state, currentTokens, hiddenSize, vocabSize, nLayers
             )
@@ -233,9 +294,11 @@ class ChatModel:
             for token in chunk:
                 token = token.astype(np.uint32)
                 preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
-                accuracy += np.argmax(preds) == token
                 preds = np.exp(preds - np.max(preds))
-                loss -= np.log(preds[token] / np.sum(preds))
+
+                prob = preds[token] / np.sum(preds)
+                accuracy += prob
+                loss -= np.log(prob)
                 state = self.getNextState(
                     weights, state, token, hiddenSize, vocabSize, nLayers
                 )

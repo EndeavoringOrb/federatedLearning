@@ -13,7 +13,7 @@ def start_client():
 
     # Init trackers
     stepStart = perf_counter()
-    timePerTrial = 0 # we measure the average time per trial and then use this to estimate whether running the current trial will take us over the allotted time
+    timePerTrial = 0  # we measure the average time per trial and then use this to estimate whether running the current trial will take us over the allotted time
 
     # Create a socket object
     print("Connecting to server")
@@ -39,6 +39,7 @@ def start_client():
         batchTokens.append(tokens[:length])
         tokens = tokens[length:]
     totalNumTokens = sum(tokenInfo)
+    maxNumTokens = float(max(tokenInfo))
     # receive optimizer state
     print("Waiting to receive optimizer values")
     optimizerValues, valid = receiveData(client, "np.float32", "SERVER")
@@ -126,9 +127,12 @@ def start_client():
                 batchTokens.append(tokens[:length])
                 tokens = tokens[length:]
             totalNumTokens = sum(tokenInfo)
+            maxNumTokens = float(max(tokenInfo))
 
         # Run trials
-        print(f"Running trials for {config['timePerStep']}s on {totalNumTokens} tokens")
+        print(
+            f"Running trials for {config['timePerStep']}s on {totalNumTokens} tokens. Avg. batch size: {totalNumTokens / maxNumTokens}"
+        )
         rewards = [seed]
         numTrials = 0
         np.random.seed(seed)
@@ -137,7 +141,7 @@ def start_client():
             perf_counter() - stepStart + timePerTrial < config["timePerStep"]
             and not firstStep
         ):
-            loss = model.getLoss(
+            loss = model.getLossBatched(
                 weights + np.random.randn(weights.shape[0]) * config["sigma"],
                 batchTokens,
                 config["hiddenSize"],
