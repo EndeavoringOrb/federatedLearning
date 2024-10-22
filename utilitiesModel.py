@@ -149,7 +149,7 @@ class ChatModel:
 
     def getNextState(self, weights, state, token, hiddenSize, vocabSize, nLayers):
         for i in range(nLayers):
-            state = np.tanh(
+            np.tanh(
                 state
                 + state
                 @ weights[
@@ -167,7 +167,8 @@ class ChatModel:
                     + hiddenSize * hiddenSize
                     + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
                     + hiddenSize * (token + 1)
-                ]
+                ],
+                state
             )
         return state
 

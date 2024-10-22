@@ -138,7 +138,7 @@ def start_client():
         np.random.seed(seed)
         trialStart = perf_counter()
         while (
-            perf_counter() - stepStart + timePerTrial < config["timePerStep"]
+            perf_counter() - stepStart + ((perf_counter() - trialStart) / numTrials if numTrials > 0 else timePerTrial) < config["timePerStep"]
             and not firstStep
         ):
             loss = model.getLossBatched(

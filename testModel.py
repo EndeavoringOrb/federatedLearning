@@ -70,7 +70,7 @@ def testChatModel():
     print()
 
 
-folder = "trainingRuns/0"
+folder = "trainingRuns/2"
 
 with open(f"{folder}/loss.txt", "r", encoding="utf-8") as f:
     text = f.read().strip()
