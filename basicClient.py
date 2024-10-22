@@ -8,10 +8,12 @@ def start_client():
     print("Started client")
     # Server settings
     server_ip = "130.215.211.30"
+    # server_ip = "10.0.0.239"
     server_port = 55551
 
-    # Init timer
-    start = perf_counter()
+    # Init trackers
+    stepStart = perf_counter()
+    timePerTrial = 0 # we measure the average time per trial and then use this to estimate whether running the current trial will take us over the allotted time
 
     # Create a socket object
     print("Connecting to server")
@@ -76,9 +78,11 @@ def start_client():
     firstStep = True
 
     while connected:
+        print()
         print(weights)
         # Receive weight request
-        print(f"Checking for weights request")
+        print(f"Checking for weights request ", end="")
+        start = perf_counter()
         request, valid = receiveData(client, "text", "SERVER")
         if request == "need weights":
             data = (
@@ -99,14 +103,22 @@ def start_client():
             request, valid = receiveData(
                 client, "text", "SERVER"
             )  # just receive the "dont need weights" that is sent to everyone
+        elapsed = perf_counter() - start
+        print(f"{elapsed}s")
 
         # Receieve new tokens
         # receive tokens
-        print("Waiting to receive tokens")
+        print("Waiting to receive tokens ", end="")
+        start = perf_counter()
         tokens, valid = receiveData(client, "np.uint16", "SERVER")
+        elapsed = perf_counter() - start
+        print(f"{elapsed}s")
         # receive tokens info
-        print("Waiting to receive token info")
+        print("Waiting to receive token info ", end="")
+        start = perf_counter()
         tokenInfo, valid = receiveData(client, "pickle", "SERVER")
+        elapsed = perf_counter() - start
+        print(f"{elapsed}s")
         # update batchTokens if we were actually sent new tokens
         if tokenInfo != []:
             batchTokens = []
@@ -121,7 +133,10 @@ def start_client():
         numTrials = 0
         np.random.seed(seed)
         trialStart = perf_counter()
-        while perf_counter() - start < config["timePerStep"] and not firstStep:
+        while (
+            perf_counter() - stepStart + timePerTrial < config["timePerStep"]
+            and not firstStep
+        ):
             loss = model.getLoss(
                 weights + np.random.randn(weights.shape[0]) * config["sigma"],
                 batchTokens,
@@ -132,23 +147,32 @@ def start_client():
             rewards.append(loss)
             numTrials += 1
         trialEnd = perf_counter()
+        elapsed = trialEnd - trialStart
+        timePerTrial = elapsed / numTrials if numTrials > 0 else 0
+        print(f"{trialEnd-trialStart}s")
         print(f"{(len(rewards)*totalNumTokens)/(trialEnd - trialStart)} tok/sec")
+
+        print(f"Sending {numTrials:,} rewards to server ", end="")
+        start = perf_counter()
         rewards = np.array(rewards).astype(np.float32).tobytes()
         sendBytes(client, rewards, "SERVER")
-        print(f"Sent {numTrials:,} rewards to server")
+        elapsed = perf_counter() - start
+        print(f"{elapsed}s")
 
         # Receive normalize rewards
-        print(f"Waiting for normalized rewards")
+        print(f"Waiting for normalized rewards ", end="")
+        start = perf_counter()
         normalizedRewards, valid = receiveData(client, "np.float32", "SERVER")
         data, valid = receiveData(client, "pickle", "SERVER")
-        print(f"Received normalized rewards")
-        start = perf_counter()
-
         reward_info = data["reward_info"]
         seed = data["seed"]
+        elapsed = perf_counter() - start
+        print(f"{elapsed}s")
+        stepStart = perf_counter()
 
         # Update weights
-        print(f"Updating weights")
+        print(f"Updating weights ", end="")
+        start = perf_counter()
         rewardNum = 0
         grad.fill(0)
         totalNTrials = float(sum([item[0] for item in reward_info]))
@@ -162,8 +186,11 @@ def start_client():
             grad = optimizer.getGrad(grad)
         else:
             grad *= config["learningRate"]
-        print(f"Grad Norm: {np.sqrt((grad**2).sum())}")
+        gradNorm = np.sqrt((grad**2).sum())
         weights -= grad
+        elapsed = perf_counter() - start
+        print(f"{elapsed}s")
+        print(f"Grad Norm: {gradNorm}")
 
         firstStep = False
 

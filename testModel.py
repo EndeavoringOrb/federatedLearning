@@ -70,13 +70,16 @@ def testChatModel():
     print()
 
 
-folder = "trainingRuns/26"
+folder = "trainingRuns/31"
 
 with open(f"{folder}/loss.txt", "r", encoding="utf-8") as f:
     text = f.read().strip()
 lossValues = [float(item.strip()) for item in text.split("\n")]
 
 plt.plot(lossValues)
+plt.ylabel("Loss Value")
+plt.xlabel("Training Step")
+plt.savefig("loss.svg")
 plt.show()
 
 weights = np.load(f"{folder}/model.npy")
@@ -98,12 +101,16 @@ print(f"Vocab:")
 print(tokenizer.chars)
 
 print("Loading tokens")
-tokens, tokenInfo = next(tokenLoader(vocabSize, 8))
+tokens, tokenInfo = next(tokenLoader(vocabSize, 16))
 batchTokens = []
 for length in tokenInfo:
     batchTokens.append(tokens[:length])
     tokens = tokens[length:]
 totalNumTokens = sum(tokenInfo)
+
+print("De-Tokenize Test:")
+print(tokenizer.deTokenize(batchTokens[0]))
+print()
 
 print(f"Testing {len(tokenInfo):,} random chunks ({sum(tokenInfo):,} tokens)")
 loss, accuracy = model.getLossAndAccuracy(

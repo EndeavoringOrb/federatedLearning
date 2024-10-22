@@ -10,10 +10,10 @@ import json
 import os
 
 config = {
-    "timePerStep": 15,
+    "timePerStep": 1,
     "learningRate": 1e-3,
     "sigma": 1e-3,
-    "hiddenSize": 64,
+    "hiddenSize": 32,
     "vocabSize": 76,
     "nLayers": 3,
     "optimizer": "adam",  # "sgd" or "adam"
@@ -221,9 +221,10 @@ def handleClients():
         numRewards = len(all_rewards)
         print(f"Total # Rewards: {numRewards:,}")
         if numRewards == 1:
+            mean = np.nan
             normalizedRewards = np.zeros(1)
-            mean = 0
-            print(f"Mean Reward: {0}")
+            reward_info = [(1, 0)]
+            print(f"Setting mean to 0 because of nan value")
         else:
             normalizedRewards = np.array(all_rewards)
             mean = normalizedRewards.mean()
