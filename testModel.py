@@ -2,15 +2,7 @@ from utilities.model import *
 from shakespeareData.shakespeareData import tokenLoader, Tokenizer
 from time import perf_counter
 import matplotlib.pyplot as plt
-
-modelType = "chat"
-
-if modelType == "critic":
-    model = ChatCritic()
-elif modelType == "minGru":
-    model = MinGruChat()
-else:
-    model = ChatModel()
+import json
 
 
 def testChatCritic():
@@ -70,7 +62,8 @@ def testChatModel():
     print()
 
 
-folder = "trainingRuns/0"
+runNum = int(input("Enter the run # you would like to test: "))
+folder = f"trainingRuns/{runNum}"
 
 with open(f"{folder}/loss.txt", "r", encoding="utf-8") as f:
     text = f.read().strip()
@@ -82,12 +75,23 @@ plt.xlabel("Training Step")
 plt.savefig(f"{folder}/loss.svg")
 plt.show()
 
+with open(f"{folder}/config.json", "r", encoding="utf-8") as f:
+    config = json.load(f)
+
 weights = np.load(f"{folder}/model.npy")
 
-hiddenSize = int(weights[0])
-vocabSize = int(weights[1])
-nLayers = int(weights[2])
+hiddenSize = config["hiddenSize"]
+vocabSize = config["vocabSize"]
+nLayers = config["nLayers"]
+modelType = config["modelType"]
 weights = weights[3:]
+
+if modelType == "critic":
+    model = ChatCritic()
+elif modelType == "minGru":
+    model = MinGruChat()
+else:
+    model = ChatModel()
 
 tokenizer = Tokenizer(vocabSize)
 
@@ -109,8 +113,7 @@ for length in tokenInfo:
 totalNumTokens = sum(tokenInfo)
 
 print("De-Tokenize Test:")
-print(tokenizer.deTokenize(batchTokens[0]))
-print()
+print(tokenizer.deTokenize(batchTokens[0]) + "\n")
 
 print(f"Testing {len(tokenInfo):,} random chunks ({sum(tokenInfo):,} tokens)")
 loss, accuracy = model.getLossAndAccuracy(
