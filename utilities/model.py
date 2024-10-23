@@ -114,7 +114,6 @@ class ChatModel:
         sortedChunkLengths = np.asarray(
             sorted(list(set([len(chunk) for chunk in tokens])))
         )
-        maxLength = max(chunkLengths)
         numTokens = sum(chunkLengths)
         indices = np.arange(batchSize)
 

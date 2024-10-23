@@ -79,16 +79,14 @@ def tokenLoader(vocabSize, batchSize):
         for text in textLoader()
     ]
 
-    # TODO: move this block back into the while True
-    indices = np.arange(min(len(tokens), batchSize))
-    #indices = np.random.choice(len(tokens), (batchSize,))
-    batchTokens = []
-    batchInfo = []
-    for idx in indices:
-        idxTokens = tokens[idx]
-        batchTokens.append(idxTokens)
-        batchInfo.append(len(idxTokens))
-    batchTokens = np.concatenate(batchTokens)
-
     while True:
+        indices = np.random.choice(len(tokens), (batchSize,))
+        batchTokens = []
+        batchInfo = []
+        for idx in indices:
+            idxTokens = tokens[idx]
+            batchTokens.append(idxTokens)
+            batchInfo.append(len(idxTokens))
+        batchTokens = np.concatenate(batchTokens)
+
         yield batchTokens, batchInfo
