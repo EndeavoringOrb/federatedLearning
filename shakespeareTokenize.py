@@ -1,6 +1,4 @@
-import os
 import json
-from tqdm import tqdm
 from collections import Counter
 from shakespeareData import textLoader
 
