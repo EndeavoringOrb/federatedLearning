@@ -66,13 +66,8 @@ def start_client():
         optimizer.beta2Power *= optimizer.beta2
 
     print("Initializing model")
-    if config["modelType"] == "critic":
-        model = ChatCritic()
-        tokens = [
-            [tokens, 1],
-        ]
-    elif config["modelType"] == "minGru":
-        model = MinGruChat()
+    if config["modelType"] == "chat":
+        model = ChatModel()
     else:
         model = ChatModel()
 

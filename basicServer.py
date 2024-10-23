@@ -30,10 +30,8 @@ seedHigh = 4_000_000
 
 tokens = tokenLoader(config["vocabSize"], config["batchSize"])
 
-if config["modelType"] == "critic":
-    model = ChatCritic()
-elif config["modelType"] == "minGru":
-    model = MinGruChat()
+if config["modelType"] == "chat":
+    model = ChatModel()
 else:
     model = ChatModel()
 

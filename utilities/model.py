@@ -1,5 +1,6 @@
 import numpy as np
-#from line_profiler import profile
+
+# from line_profiler import profile
 
 
 def softmax(x):
@@ -11,127 +12,16 @@ def softmax(x):
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
+
 def relu(x):
     np.maximum(x, 0, x)
-
-
-class MinGruChat:
-    def __init__(self) -> None:
-        pass
-
-    def getPred(self, weights, state, hiddenSize, vocabSize):
-        return state @ weights[hiddenSize + 2 * hiddenSize * vocabSize :].reshape(
-            hiddenSize, vocabSize
-        )
-
-    def getNextState(self, weights, state, token, hiddenSize, vocabSize):
-        z = sigmoid(
-            weights[
-                hiddenSize + hiddenSize * token : hiddenSize + hiddenSize * (token + 1)
-            ]
-        )
-        h_hat = weights[
-            hiddenSize
-            + hiddenSize * vocabSize
-            + hiddenSize * token : hiddenSize
-            + hiddenSize * vocabSize
-            + hiddenSize * (token + 1)
-        ]
-        h = (1 - z) * state + z * h_hat
-        return h
-
-    def getLoss(self, weights, tokens, hiddenSize, vocabSize):
-        loss = 0.0
-        numTokens = 0
-
-        for chunk in tokens:
-            state = weights[:hiddenSize]
-            numTokens += len(chunk)
-
-            for token in chunk:
-                token = token.astype(np.uint32)
-                preds = self.getPred(weights, state, hiddenSize, vocabSize)
-                preds = np.exp(preds - np.max(preds))
-                loss -= np.log(preds[token] / np.sum(preds))
-                state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
-
-        return loss / numTokens
-
-    def getAccuracy(self, weights, tokens, hiddenSize, vocabSize):
-        state = weights[:hiddenSize]
-        correct = 0.0
-        numTokens = 0
-        for chunk in tokens:
-            numTokens += len(chunk)
-            for token in chunk:
-                token = token.astype(np.uint32)
-                preds = self.getPred(weights, state, hiddenSize, vocabSize)
-                correct += np.argmax(preds) == token
-                state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
-        return correct / numTokens
-
-    def getLossAndAccuracy(self, weights, tokens, hiddenSize, vocabSize):
-        loss = 0.0
-        accuracy = 0.0
-        numTokens = 0
-
-        for chunk in tokens:
-            state = weights[:hiddenSize]
-            numTokens += len(chunk)
-
-            for token in chunk:
-                token = token.astype(np.uint32)
-                preds = self.getPred(weights, state, hiddenSize, vocabSize)
-                preds = np.exp(preds - np.max(preds))
-                prob = preds[token] / np.sum(preds)
-                accuracy += prob
-                loss -= np.log(prob)
-                state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
-
-        return loss / numTokens, accuracy / numTokens
-
-    def preprocess(self, weights, tokens, hiddenSize, vocabSize):
-        state = weights[:hiddenSize]
-        for token in tokens:
-            state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
-        return state
-
-    def generate(
-        self, weights, state, hiddenSize, vocabSize, stopToken, maxNumTokens=None
-    ):
-        if state is None:
-            state = weights[:hiddenSize]
-        tokens = []
-        if maxNumTokens == None:
-            while True:
-                tokProbs = softmax(self.getPred(weights, state, hiddenSize, vocabSize))
-                token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
-                if token == stopToken:
-                    return tokens
-                tokens.append(token)
-                state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
-        else:
-            for i in range(maxNumTokens):
-                tokProbs = softmax(self.getPred(weights, state, hiddenSize, vocabSize))
-                token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
-                if token == stopToken:
-                    return tokens
-                tokens.append(token)
-                state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
-        return tokens
-
-    def getWeights(self, hiddenSize, vocabSize):
-        return (
-            np.random.randn(hiddenSize + 3 * hiddenSize * vocabSize).astype(np.float32)
-            * 0.02
-        )
 
 
 class ChatModel:
     def __init__(self) -> None:
         pass
 
-    #@profile
+    # @profile
     def getPred(self, weights, state, hiddenSize, vocabSize, nLayers):
         out = state @ weights[
             hiddenSize
@@ -168,11 +58,11 @@ class ChatModel:
                     + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
                     + hiddenSize * (token + 1)
                 ],
-                state
+                state,
             )
         return state
 
-    #@profile
+    # @profile
     def getNextStateBatched(
         self, weights, state, tokens, hiddenSize, vocabSize, nLayers
     ):
@@ -196,7 +86,7 @@ class ChatModel:
                     + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
                     + hiddenSize * vocabSize
                 ].reshape(vocabSize, hiddenSize)[tokens],
-                state
+                state,
             )
         return state
 
@@ -219,7 +109,7 @@ class ChatModel:
 
         return loss / numTokens
 
-    #@profile
+    # @profile
     def getLossBatched(
         self, weights, tokens: list[list], hiddenSize, vocabSize, nLayers
     ):
@@ -268,43 +158,10 @@ class ChatModel:
 
         return loss / numTokens
 
-    def getAccuracy(self, weights, tokens, hiddenSize, vocabSize, nLayers):
-        state = weights[:hiddenSize]
-        correct = 0.0
-        numTokens = 0
-        for chunk in tokens:
-            numTokens += len(chunk)
-            for token in chunk:
-                token = token.astype(np.uint32)
-                preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
-                correct += np.argmax(preds) == token
-                state = self.getNextState(
-                    weights, state, token, hiddenSize, vocabSize, nLayers
-                )
-        return correct / numTokens
-
     def getLossAndAccuracy(self, weights, tokens, hiddenSize, vocabSize, nLayers):
-        loss = 0.0
-        accuracy = 0.0
-        numTokens = 0
-
-        for chunk in tokens:
-            state = weights[:hiddenSize]
-            numTokens += len(chunk)
-
-            for token in chunk:
-                token = token.astype(np.uint32)
-                preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
-                preds = np.exp(preds - np.max(preds))
-
-                prob = preds[token] / np.sum(preds)
-                accuracy += prob
-                loss -= np.log(prob)
-                state = self.getNextState(
-                    weights, state, token, hiddenSize, vocabSize, nLayers
-                )
-
-        return loss / numTokens, accuracy / numTokens
+        loss = self.getLossBatched(weights, tokens, hiddenSize, vocabSize, nLayers)
+        accuracy = np.exp(-loss)
+        return loss, accuracy
 
     def preprocess(self, weights: np.ndarray, tokens, hiddenSize, vocabSize, nLayers):
         state = weights[:hiddenSize]
@@ -327,31 +184,19 @@ class ChatModel:
         if state is None:
             state = weights[:hiddenSize]
         tokens = []
-        if maxNumTokens == None:
-            while True:
-                tokProbs = softmax(
-                    self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
-                )
-                token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
-                if token == stopToken:
-                    return tokens
-                tokens.append(token)
-                state = self.getNextState(
-                    weights, state, token, hiddenSize, vocabSize, nLayers
-                )
-        else:
-            for i in range(maxNumTokens):
-                tokProbs = softmax(
-                    self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
-                )
-                token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
-                if token == stopToken:
-                    return tokens
-                tokens.append(token)
-                state = self.getNextState(
-                    weights, state, token, hiddenSize, vocabSize, nLayers
-                )
-        return tokens
+        while True:
+            tokProbs = softmax(
+                self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+            )
+            token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
+            if token == stopToken:
+                return tokens
+            tokens.append(token)
+            state = self.getNextState(
+                weights, state, token, hiddenSize, vocabSize, nLayers
+            )
+            if maxNumTokens != None and len(tokens) == maxNumTokens:
+                return tokens
 
     def getWeights(self, hiddenSize, vocabSize, nLayers):
         return (
@@ -363,77 +208,6 @@ class ChatModel:
                 )  # hh and ih for each layer
                 + hiddenSize * (hiddenSize * 4)  # ho1
                 + (hiddenSize * 4) * vocabSize  # ho2
-            ).astype(np.float32)
-            * 0.02
-        )
-
-
-class ChatCritic:
-    def __init__(self) -> None:
-        pass
-
-    def getNextState(self, weights, state, token, hiddenSize, vocabSize):
-        state = np.tanh(
-            state
-            + state
-            @ weights[hiddenSize : hiddenSize + hiddenSize * hiddenSize].reshape(
-                hiddenSize, hiddenSize
-            )
-            + weights[
-                hiddenSize
-                + hiddenSize * hiddenSize
-                + hiddenSize * token : hiddenSize
-                + hiddenSize * hiddenSize
-                + hiddenSize * (token + 1)
-            ]
-        )
-        return state
-
-    def preprocess(self, weights, tokens, hiddenSize, vocabSize):
-        state = weights[:hiddenSize]
-        for token in tokens:
-            state = self.getNextState(weights, state, token, hiddenSize, vocabSize)
-        return state
-
-    def getPred(self, weights, state, hiddenSize, vocabSize):
-        """
-        State -> [no, yes]
-        """
-        return state @ weights[
-            hiddenSize + hiddenSize * hiddenSize + hiddenSize * vocabSize :
-        ].reshape(hiddenSize, 2)
-
-    def getLoss(self, weights, tokens, hiddenSize, vocabSize):
-        loss = 0.0
-
-        for chunk, goodAnswer in tokens:
-            state = self.preprocess(weights, chunk, hiddenSize, vocabSize)
-            preds = self.getPred(weights, state, hiddenSize, vocabSize)
-            preds = np.exp(preds - np.max(preds))
-            loss -= np.log(preds[goodAnswer] / np.sum(preds))
-
-        return loss / len(tokens)
-
-    def getLossAndAccuracy(self, weights, tokens, hiddenSize, vocabSize):
-        loss = 0.0
-        accuracy = 0.0
-
-        for chunk, goodAnswer in tokens:
-            state = self.preprocess(weights, chunk, hiddenSize, vocabSize)
-            preds = self.getPred(weights, state, hiddenSize, vocabSize)
-            accuracy += np.argmax(preds) == goodAnswer
-            preds = np.exp(preds - np.max(preds))
-            loss -= np.log(preds[goodAnswer] / np.sum(preds))
-
-        return loss / len(tokens), accuracy / len(tokens)
-
-    def getWeights(self, hiddenSize, vocabSize):
-        return (
-            np.random.randn(
-                hiddenSize
-                + hiddenSize * hiddenSize
-                + hiddenSize * vocabSize
-                + hiddenSize * 2
             ).astype(np.float32)
             * 0.02
         )

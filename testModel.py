@@ -5,32 +5,6 @@ import matplotlib.pyplot as plt
 import json
 
 
-def testChatCritic():
-    text = input("Enter text: ")
-    start = perf_counter()
-    tokens = tokenizer.tokenize(text)
-    if len(tokens) == 0 or tokens[-1] != tokenizer.stopToken:
-        tokens.append(tokenizer.stopToken)
-    end = perf_counter()
-    numInputTokens = len(tokens)
-    print(
-        f"Tokenized {numInputTokens} tokens in {1000*(end-start):.3f}ms ({int(numInputTokens/(end-start)):,} tok/sec)"
-    )
-
-    start = perf_counter()
-    state = model.preprocess(weights, tokens, hiddenSize, vocabSize)
-    end = perf_counter()
-    print(
-        f"Preprocessed {len(tokens)} tokens in {1000*(end-start):.3f}ms ({int(len(tokens)/(end-start)):,} tok/sec)"
-    )
-
-    preds = model.getPred(weights, state, hiddenSize, vocabSize)
-    preds = softmax(preds)
-
-    print(f"Inputted text has an Answer Score of {100*preds[1]:.3f}%")
-    print()
-
-
 def testChatModel():
     text = input("Enter text: ")
     start = perf_counter()
@@ -86,10 +60,8 @@ nLayers = config["nLayers"]
 modelType = config["modelType"]
 weights = weights[3:]
 
-if modelType == "critic":
-    model = ChatCritic()
-elif modelType == "minGru":
-    model = MinGruChat()
+if config["modelType"] == "chat":
+    model = ChatModel()
 else:
     model = ChatModel()
 
@@ -105,7 +77,7 @@ print(f"Vocab:")
 print(tokenizer.chars)
 
 print("Loading tokens")
-tokens, tokenInfo = next(tokenLoader(vocabSize, 32))
+tokens, tokenInfo = next(tokenLoader(vocabSize, 512))
 batchTokens = []
 for length in tokenInfo:
     batchTokens.append(tokens[:length])
@@ -123,7 +95,7 @@ print(f"Model Avg. Loss: {loss:.3e}")
 print(f"Model Accuracy: {100*accuracy:.3f}%")
 
 while True:
-    if modelType == "critic":
-        testChatCritic()
+    if modelType == "chat":
+        testChatModel()
     else:
         testChatModel()
