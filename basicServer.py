@@ -1,11 +1,11 @@
 import socket
 import threading
 from threading import Lock
-from basicCommunicationUtils import *
-from utilitiesModel import *
-from utilitiesMisc import *
+from utilities.communication import *
+from utilities.model import *
+from utilities.misc import *
 from time import sleep, perf_counter
-from shakespeareData import tokenLoader
+from shakespeareData.shakespeareData import tokenLoader
 import json
 import os
 

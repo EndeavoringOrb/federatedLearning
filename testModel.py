@@ -1,5 +1,5 @@
-from utilitiesModel import *
-from shakespeareData import tokenLoader, Tokenizer
+from utilities.model import *
+from shakespeareData.shakespeareData import tokenLoader, Tokenizer
 from time import perf_counter
 import matplotlib.pyplot as plt
 
@@ -70,7 +70,7 @@ def testChatModel():
     print()
 
 
-folder = "trainingRuns/2"
+folder = "trainingRuns/0"
 
 with open(f"{folder}/loss.txt", "r", encoding="utf-8") as f:
     text = f.read().strip()
@@ -79,7 +79,7 @@ lossValues = [float(item.strip()) for item in text.split("\n")]
 plt.plot(lossValues)
 plt.ylabel("Loss Value")
 plt.xlabel("Training Step")
-plt.savefig("loss.svg")
+plt.savefig(f"{folder}/loss.svg")
 plt.show()
 
 weights = np.load(f"{folder}/model.npy")

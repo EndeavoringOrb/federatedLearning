@@ -1,6 +1,6 @@
 import socket
-from basicCommunicationUtils import *
-from utilitiesModel import *
+from utilities.communication import *
+from utilities.model import *
 from time import perf_counter
 
 
@@ -138,7 +138,14 @@ def start_client():
         np.random.seed(seed)
         trialStart = perf_counter()
         while (
-            perf_counter() - stepStart + ((perf_counter() - trialStart) / numTrials if numTrials > 0 else timePerTrial) < config["timePerStep"]
+            perf_counter()
+            - stepStart
+            + (
+                (perf_counter() - trialStart) / numTrials
+                if numTrials > 0
+                else timePerTrial
+            )
+            < config["timePerStep"]
             and not firstStep
         ):
             loss = model.getLossBatched(
