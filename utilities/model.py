@@ -41,15 +41,19 @@ class ChatModel:
         for i in range(nLayers):
             np.tanh(
                 state
-                + state
-                @ weights[
-                    hiddenSize
-                    + i
-                    * (hiddenSize * hiddenSize + hiddenSize * vocabSize) : hiddenSize
-                    + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
-                    + hiddenSize * hiddenSize
-                ].reshape(hiddenSize, hiddenSize)
-                + weights[
+                + (
+                    state
+                    @ weights[
+                        hiddenSize
+                        + i
+                        * (
+                            hiddenSize * hiddenSize + hiddenSize * vocabSize
+                        ) : hiddenSize
+                        + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+                        + hiddenSize * hiddenSize
+                    ].reshape(hiddenSize, hiddenSize)
+                )
+                * weights[
                     hiddenSize
                     + hiddenSize * hiddenSize
                     + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
@@ -69,15 +73,19 @@ class ChatModel:
         for i in range(nLayers):
             np.tanh(
                 state
-                + state
-                @ weights[
-                    hiddenSize
-                    + i
-                    * (hiddenSize * hiddenSize + hiddenSize * vocabSize) : hiddenSize
-                    + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
-                    + hiddenSize * hiddenSize
-                ].reshape(hiddenSize, hiddenSize)
-                + weights[
+                + (
+                    state
+                    @ weights[
+                        hiddenSize
+                        + i
+                        * (
+                            hiddenSize * hiddenSize + hiddenSize * vocabSize
+                        ) : hiddenSize
+                        + i * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+                        + hiddenSize * hiddenSize
+                    ].reshape(hiddenSize, hiddenSize)
+                )
+                * weights[
                     hiddenSize
                     + hiddenSize * hiddenSize
                     + i

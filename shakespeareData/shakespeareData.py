@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import json
 import os
 
@@ -71,10 +70,14 @@ class Tokenizer:
                 text += self.itos[token]
         return text
 
+
 def tokenLoader(vocabSize, batchSize):
     tokenizer = Tokenizer(vocabSize)
 
-    tokens = [np.array(tokenizer.tokenize(text, True)).astype(np.uint16) for text in textLoader()]
+    tokens = [
+        np.array(tokenizer.tokenize(text, True)).astype(np.uint16)
+        for text in textLoader()
+    ]
 
     while True:
         indices = np.random.choice(len(tokens), (batchSize,))
