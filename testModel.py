@@ -37,20 +37,47 @@ def testChatModel():
 
 
 runNum = int(input("Enter the run # you would like to test: "))
-folder = f"trainingRuns/{runNum}"
+try:
+    compareRunNum = int(input("Enter the run # you would like to compare to: "))
+except Exception as e:
+    compareRunNum = None
 
+# Plot run loss
+folder = f"trainingRuns/{runNum}"
 with open(f"{folder}/loss.txt", "r", encoding="utf-8") as f:
     text = f.read().strip()
 lossValues = [float(item.strip()) for item in text.split("\n")]
+plt.plot(lossValues, label=f"Run {runNum}")
 
-plt.plot(lossValues)
-plt.ylabel("Loss Value")
-plt.xlabel("Training Step")
-plt.savefig(f"{folder}/loss.svg")
-plt.show()
+# Plot compare run loss
+if compareRunNum is not None:
+    compareFolder = f"trainingRuns/{compareRunNum}"
+    with open(f"{compareFolder}/loss.txt", "r", encoding="utf-8") as f:
+        text = f.read().strip()
+    lossValues = [float(item.strip()) for item in text.split("\n")]
 
+    plt.plot(lossValues, label=f"Run {compareRunNum}")
+
+# Print run config
+print(f"\nRun {runNum} config:")
 with open(f"{folder}/config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
+for k, v in config.items():
+    print(f"  {k}: {v}")
+
+# Print compare run config
+if compareRunNum is not None:
+    print(f"Run {compareRunNum} config:")
+    with open(f"{compareFolder}/config.json", "r", encoding="utf-8") as f:
+        compareConfig = json.load(f)
+    for k, v in compareConfig.items():
+        print(f"  {k}: {v}")
+
+plt.ylabel("Loss Value")
+plt.xlabel("Training Step")
+plt.legend()
+plt.savefig(f"{folder}/loss.svg")
+plt.show()
 
 weights = np.load(f"{folder}/model.npy")
 

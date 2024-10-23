@@ -10,12 +10,12 @@ import json
 import os
 
 config = {
-    "timePerStep": 1,
+    "timePerStep": 5,
     "learningRate": 1e-3,
     "sigma": 1e-3,
-    "hiddenSize": 8,
+    "hiddenSize": 32,
     "vocabSize": 76,
-    "nLayers": 3,
+    "nLayers": 4,
     "optimizer": "adam",  # "sgd" or "adam"
     "beta1": 0.9,
     "beta2": 0.999,
@@ -23,7 +23,7 @@ config = {
     "modelType": "chat",
     "checkPointTime": 60,
     "newTokensInterval": 1,  # send new tokens every N steps
-    "batchSize": 16,
+    "batchSize": 32,
 }
 seedHigh = 4_000_000
 
