@@ -24,7 +24,7 @@ def testChatModel():
 
     start = perf_counter()
     newTokens = model.generate(
-        weights, state, hiddenSize, vocabSize, nLayers, tokenizer.stopToken
+        weights, state, hiddenSize, vocabSize, nLayers, tokenizer.stopToken, numBeams=numBeams
     )
     end = perf_counter()
     print(
@@ -41,6 +41,10 @@ try:
     compareRunNum = int(input("Enter the run # you would like to compare to: "))
 except Exception as e:
     compareRunNum = None
+try:
+    numBeams = int(input("Enter the # of beams you would like to search with: "))
+except Exception as e:
+    numBeams = None
 
 # Plot run loss
 folder = f"trainingRuns/{runNum}"
@@ -94,7 +98,7 @@ else:
 
 tokenizer = Tokenizer(vocabSize)
 
-print(f"Loaded model")
+print(f"\nLoaded model")
 print(f"Hidden Size: {hiddenSize}")
 print(f"Vocab Size: {vocabSize}")
 print(f"# Layers: {nLayers}")

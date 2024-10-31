@@ -10,10 +10,10 @@ import json
 import os
 
 config = {
-    "timePerStep": 5,
+    "timePerStep": 1,
     "learningRate": 1e-3,
-    "sigma": 1e-3,
-    "hiddenSize": 32,
+    "sigma": 1e-2,
+    "hiddenSize": 16,
     "vocabSize": 76,
     "nLayers": 4,
     "optimizer": "adam",  # "sgd" or "adam"
@@ -22,8 +22,8 @@ config = {
     "stepNum": 0,
     "modelType": "chat",
     "checkPointTime": 60,
-    "newTokensInterval": 1,  # send new tokens every N steps
-    "batchSize": 32,
+    "newTokensInterval": 1e9,  # send new tokens every N steps
+    "batchSize": 8,
 }
 seedHigh = 4_000_000
 
@@ -37,6 +37,7 @@ else:
 
 weights = model.getWeights(config["hiddenSize"], config["vocabSize"], config["nLayers"])
 nParams = weights.shape[0]
+print(f"Model has {nParams:,} parameters")
 optimizerValues = np.zeros(nParams * 2).astype(np.float32)
 newWeights = False
 all_rewards = []
@@ -262,7 +263,7 @@ def handleClients():
             f.write(f"{mean}\n")
 
 
-def start_server():
+def startServer():
     # Server settings
     server_ip = "0.0.0.0"
     server_port = 55551
@@ -288,4 +289,4 @@ def start_server():
 
 
 if __name__ == "__main__":
-    start_server()
+    startServer()

@@ -8,7 +8,7 @@ def softmax(x):
     np.subtract(x, np.max(x), x)  # Subtract max for numerical stability
     np.exp(x, x)
     invSum = 1.0 / np.sum(x)
-    np.multiply(x, invSum)
+    np.multiply(x, invSum, x)
 
 
 def relu(x):
@@ -204,6 +204,7 @@ class ChatModel:
             )
         return state
 
+    # @profile
     def generate(
         self,
         weights,
@@ -213,23 +214,76 @@ class ChatModel:
         nLayers,
         stopToken,
         maxNumTokens=None,
+        numBeams=None,
     ):
-        if state is None:
-            state = self.getInitState(weights, hiddenSize)
-        tokens = []
-        while True:
-            tokProbs = softmax(
-                self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
-            )
-            token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
-            if token == stopToken:
-                return tokens
-            tokens.append(token)
-            state = self.getNextState(
-                weights, state, token, hiddenSize, vocabSize, nLayers
-            )
-            if maxNumTokens != None and len(tokens) == maxNumTokens:
-                return tokens
+        if numBeams == None:
+            if state is None:
+                state = self.getInitState(weights, hiddenSize)
+            tokens = []
+            while True:
+                tokProbs = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
+                softmax(tokProbs)
+                token = np.random.choice(vocabSize, 1, True, tokProbs)[0]
+                if token == stopToken:
+                    return tokens
+                tokens.append(token)
+                state = self.getNextState(
+                    weights, state, token, hiddenSize, vocabSize, nLayers
+                )
+                if maxNumTokens != None and len(tokens) == maxNumTokens:
+                    return tokens
+        else:
+            if state is None:
+                state = self.getInitState(weights, hiddenSize)
+            state = state.reshape(1, hiddenSize).repeat(numBeams, 0)
+            candidate_seqs = [[[], i, 0] for i in range(numBeams)]
+            stepNum = 0
+            while True:
+                next_candidate_seqs = []
+
+                for candidate in candidate_seqs:
+                    if len(candidate[0]) > 0 and candidate[0][-1] == stopToken:
+                        next_candidate_seqs.append(candidate)
+                        continue
+
+                    tokProbs = self.getPred(
+                        weights, state[candidate[1]], hiddenSize, vocabSize, nLayers
+                    )
+                    softmax(tokProbs)
+                    tokens = np.random.choice(vocabSize, numBeams, False, tokProbs)
+
+                    for i in range(numBeams):
+                        nextTokId = tokens[i]
+                        nextScore = tokProbs[nextTokId]
+                        newSeq = [
+                            [item for item in candidate[0]] + [nextTokId],
+                            candidate[1],
+                            candidate[2] + np.log(nextScore),
+                        ]
+                        next_candidate_seqs.append(newSeq)
+
+                next_candidate_seqs.sort(key=lambda x: x[2], reverse=True)
+                candidate_seqs = next_candidate_seqs[:numBeams]
+                state = state[[item[1] for item in candidate_seqs]]
+
+                for i in range(numBeams):
+                    candidate_seqs[i][1] = i
+                    state[i] = self.getNextState(
+                        weights,
+                        state[i],
+                        candidate_seqs[i][0][-1],
+                        hiddenSize,
+                        vocabSize,
+                        nLayers,
+                    )
+
+                stepNum += 1
+
+                if (
+                    all(seq[0][-1] == stopToken for seq in candidate_seqs)
+                    or stepNum >= 1000
+                ):
+                    return candidate_seqs[0][0][:-1]
 
     def getWeights(self, hiddenSize, vocabSize, nLayers):
         return (
