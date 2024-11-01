@@ -233,7 +233,8 @@ def handleClients():
                 reward_info = [(1, 0)]
                 print(f"Setting mean to 0 because of nan value")
             else:
-                normalizedRewards = (normalizedRewards - mean) / np.std(all_rewards)
+                mulVal = 1.0 / (np.std(all_rewards) * float(numRewards) * config["sigma"])
+                normalizedRewards = (normalizedRewards - mean) * mulVal
 
         print()
         seeds = np.random.randint(0, seedHigh, len(clients))

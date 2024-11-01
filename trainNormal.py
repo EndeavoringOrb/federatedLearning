@@ -63,7 +63,7 @@ class SimpleRNN(nn.Module):
 if __name__ == "__main__":
     # SETTINGS
     ##########
-    hiddenSize = 32
+    hiddenSize = 64
     vocabSize = 76
     nLayers = 4
 
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu")
     print(f"Using {device}")
-    # model: SimpleRNN = SimpleRNN(vocabSize, hiddenSize, nLayers).to(device)
+    #model: SimpleRNN = SimpleRNN(vocabSize, hiddenSize, nLayers).to(device)
     model: SimpleRNN = torch.load("model.pt", weights_only=False).to(device)
     print(f"Model has {sum(p.numel() for p in model.parameters()):,} parameters")
 

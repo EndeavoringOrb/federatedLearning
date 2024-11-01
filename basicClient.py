@@ -187,7 +187,6 @@ def start_client():
             for trial in range(nTrials):
                 grad += np.random.randn(weights.shape[0]) * normalizedRewards[rewardNum]
                 rewardNum += 1
-        grad *= 1.0 / float(totalNTrials)
         if config["optimizer"] == "adam":
             grad = optimizer.getGrad(grad)
         else:
