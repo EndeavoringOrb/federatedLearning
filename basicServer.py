@@ -20,7 +20,6 @@ config = {
     "beta1": 0.9,
     "beta2": 0.999,
     "stepNum": 0,
-    "modelType": "chat",
     "checkPointTime": 60,
     "newTokensInterval": 1e9,  # send new tokens every N steps
     "batchSize": 8,
@@ -30,10 +29,7 @@ seedHigh = 4_000_000
 
 tokens = tokenLoader(config["vocabSize"], config["batchSize"])
 
-if config["modelType"] == "chat":
-    model = ChatModel()
-else:
-    model = ChatModel()
+model = ChatModel()
 
 weights = model.getWeights(config["hiddenSize"], config["vocabSize"], config["nLayers"])
 nParams = weights.shape[0]
@@ -283,7 +279,9 @@ def startServer():
 
     # Listen for incoming connections
     server.listen(5)
-    print(f"[LISTENING] Server is listening on {server_ip}:{server_port}")
+    print(
+        f"[LISTENING] Server is listening on {socket.gethostbyname(socket.gethostname())}:{server_port}"
+    )
 
     # Start handler thread
     thread = threading.Thread(target=handleClients, args=())

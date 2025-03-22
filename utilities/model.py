@@ -1,9 +1,6 @@
 import numpy as np
 
-# from line_profiler import profile
 
-
-# @profile
 def softmax(x):
     np.subtract(x, np.max(x), x)  # Subtract max for numerical stability
     np.exp(x, x)
@@ -22,7 +19,6 @@ class ChatModel:
     def getInitState(self, weights: np.ndarray, hiddenSize):
         return weights[:hiddenSize].copy()
 
-    # @profile
     def getPred(self, weights, state, hiddenSize, vocabSize, nLayers):
         out = state @ weights[
             hiddenSize
@@ -38,7 +34,6 @@ class ChatModel:
         ].reshape(hiddenSize * 4, vocabSize)
         return out
 
-    # @profile
     def getNextState(self, weights, state, token, hiddenSize, vocabSize, nLayers):
         for i in range(nLayers):
             np.tanh(
@@ -68,7 +63,6 @@ class ChatModel:
             )
         return state
 
-    # @profile
     def getNextStateBatched(
         self, weights, state, tokens, hiddenSize, vocabSize, nLayers
     ):
@@ -100,7 +94,6 @@ class ChatModel:
             )
         return state
 
-    # @profile
     def getLossBatched(
         self, weights, tokens: list[list], hiddenSize, vocabSize, nLayers
     ):
@@ -155,40 +148,6 @@ class ChatModel:
 
             previousLength = length
 
-        """for i in range(maxLength):
-            # Remove sequences that are finished
-            # TODO: optimize this by doing a nested for loop with the chunkLengths
-            removeIndices: np.ndarray = np.where(chunkLengths == i)[0]
-            if len(removeIndices) > 0:
-                removeIndices[::-1].sort()
-                for idx in removeIndices:
-                    tokens.pop(idx)
-                chunkLengths = np.delete(chunkLengths, removeIndices)
-                state = np.delete(state, removeIndices, axis=0)
-                indices = np.arange(len(chunkLengths))
-
-            # Get tokens for current step
-            currentTokens = [chunk[i] for chunk in tokens]
-
-            # Get preds
-            preds = self.getPred(weights, state, hiddenSize, vocabSize, nLayers)
-
-            # this maxVals version is more numerically stable, but I don't think the values are going to be very large because of the sigmoid in getPred
-            # maxVals = np.max(preds, -1).reshape(-1, 1)
-            # preds: np.ndarray = np.exp(preds - maxVals)
-            preds: np.ndarray = np.exp(preds)
-
-            # Get loss
-            predsSum = preds.sum(axis=-1)
-            tokenPreds = preds[indices, currentTokens]
-            lossVals = np.log(tokenPreds / predsSum)
-            loss -= lossVals.sum()
-
-            # Get next state
-            state = self.getNextStateBatched(
-                weights, state, currentTokens, hiddenSize, vocabSize, nLayers
-            )
-"""
         return loss / numTokens
 
     def getLossAndAccuracy(self, weights, tokens, hiddenSize, vocabSize, nLayers):
@@ -204,7 +163,6 @@ class ChatModel:
             )
         return state
 
-    # @profile
     def generate(
         self,
         weights,

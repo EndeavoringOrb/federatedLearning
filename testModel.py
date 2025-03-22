@@ -24,7 +24,13 @@ def testChatModel():
 
     start = perf_counter()
     newTokens = model.generate(
-        weights, state, hiddenSize, vocabSize, nLayers, tokenizer.stopToken, numBeams=numBeams
+        weights,
+        state,
+        hiddenSize,
+        vocabSize,
+        nLayers,
+        tokenizer.stopToken,
+        numBeams=numBeams,
     )
     end = perf_counter()
     print(

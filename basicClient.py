@@ -4,11 +4,8 @@ from utilities.model import *
 from time import perf_counter
 
 
-def start_client():
+def start_client(server_ip, server_port):
     print("Started client")
-    # Server settings
-    server_ip = "130.215.13.29"
-    server_port = 55551
 
     # Init trackers
     stepStart = perf_counter()
@@ -230,4 +227,7 @@ def start_client():
 
 
 if __name__ == "__main__":
-    start_client()
+    # Server settings
+    server_ip = "130.215.13.29"
+    server_port = 55551
+    start_client(server_ip, server_port)
