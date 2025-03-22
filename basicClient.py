@@ -7,8 +7,7 @@ from time import perf_counter
 def start_client():
     print("Started client")
     # Server settings
-    server_ip = "130.215.211.30"
-    # server_ip = "10.0.0.239"
+    server_ip = "130.215.13.29"
     server_port = 55551
 
     # Init trackers
@@ -23,32 +22,44 @@ def start_client():
     print("Connected")
 
     # Receive initial data
-    # receive weights
+    ## receive weights
     print("Waiting to receive weights")
     weights, valid = receiveData(client, "np.float32", "SERVER")
+    if not valid:
+        exit(0)
     weights = weights.copy()
     grad: np.ndarray = np.zeros_like(weights)
-    # receive tokens
+    ## receive tokens
     print("Waiting to receive tokens")
     tokens, valid = receiveData(client, "np.uint16", "SERVER")
-    # receive tokens info
+    if not valid:
+        exit(0)
+    ## receive tokens info
     print("Waiting to receive token info")
     tokenInfo, valid = receiveData(client, "pickle", "SERVER")
+    if not valid:
+        exit(0)
     batchTokens = []
     for length in tokenInfo:
         batchTokens.append(tokens[:length])
         tokens = tokens[length:]
     totalNumTokens = sum(tokenInfo)
     maxNumTokens = float(max(tokenInfo))
-    # receive optimizer state
+    ## receive optimizer state
     print("Waiting to receive optimizer values")
     optimizerValues, valid = receiveData(client, "np.float32", "SERVER")
-    # receive config
+    if not valid:
+        exit(0)
+    ## receive config
     print("Waiting to receive config")
     config, valid = receiveData(client, "pickle", "SERVER")
-    # receive random seed
+    if not valid:
+        exit(0)
+    ## receive random seed
     print("Waiting to receive random seed")
     seed, valid = receiveData(client, "pickle", "SERVER")
+    if not valid:
+        exit(0)
     print(f"Received initial data")
 
     print("Initializing optimizer")
@@ -80,6 +91,8 @@ def start_client():
         print(f"Checking for weights request ", end="")
         start = perf_counter()
         request, valid = receiveData(client, "text", "SERVER")
+        if not valid:
+            exit(0)
         if request == "need weights":
             data = (
                 np.concatenate(
@@ -99,6 +112,8 @@ def start_client():
             request, valid = receiveData(
                 client, "text", "SERVER"
             )  # just receive the "dont need weights" that is sent to everyone
+            if not valid:
+                exit(0)
         elapsed = perf_counter() - start
         print(f"{elapsed}s")
 
@@ -107,14 +122,21 @@ def start_client():
         print("Waiting to receive tokens ", end="")
         start = perf_counter()
         tokens, valid = receiveData(client, "np.uint16", "SERVER")
+        if not valid:
+            exit(0)
         elapsed = perf_counter() - start
         print(f"{elapsed}s")
         # receive tokens info
         print("Waiting to receive token info ", end="")
         start = perf_counter()
         tokenInfo, valid = receiveData(client, "pickle", "SERVER")
+        if not valid:
+            exit(0)
         elapsed = perf_counter() - start
         print(f"{elapsed}s")
+
+        trialStart = perf_counter()
+
         # update batchTokens if we were actually sent new tokens
         if tokenInfo != []:
             batchTokens = []
@@ -131,7 +153,8 @@ def start_client():
         rewards = [seed]
         numTrials = 0
         np.random.seed(seed)
-        trialStart = perf_counter()
+
+        # while (estimated end of next step < time limit)
         while (
             perf_counter()
             - stepStart
@@ -169,7 +192,11 @@ def start_client():
         print(f"Waiting for normalized rewards ", end="")
         start = perf_counter()
         normalizedRewards, valid = receiveData(client, "np.float32", "SERVER")
+        if not valid:
+            exit(0)
         data, valid = receiveData(client, "pickle", "SERVER")
+        if not valid:
+            exit(0)
         reward_info = data["reward_info"]
         seed = data["seed"]
         elapsed = perf_counter() - start

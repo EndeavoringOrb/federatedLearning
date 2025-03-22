@@ -10,7 +10,7 @@ import json
 import os
 
 config = {
-    "timePerStep": 1,
+    "timePerStep": 10,
     "learningRate": 1e-3,
     "sigma": 1e-2,
     "hiddenSize": 16,
@@ -99,6 +99,7 @@ def handleClients():
     global optimizerValues
     global config
     global stepNum
+    global running
 
     if len(os.listdir("trainingRuns")) == 0:
         currentTrainingRun = 0
@@ -111,7 +112,7 @@ def handleClients():
     ) as f:
         json.dump(config, f)
 
-    while True:
+    while running:
         # wait for some clients
         while len(clients) + len(newClients) == 0:
             sleep(0.05)
@@ -233,7 +234,9 @@ def handleClients():
                 reward_info = [(1, 0)]
                 print(f"Setting mean to 0 because of nan value")
             else:
-                mulVal = 1.0 / (np.std(all_rewards) * float(numRewards) * config["sigma"])
+                mulVal = 1.0 / (
+                    np.std(all_rewards) * float(numRewards) * config["sigma"]
+                )
                 normalizedRewards = (normalizedRewards - mean) * mulVal
 
         print()
@@ -269,9 +272,14 @@ def startServer():
     server_ip = "0.0.0.0"
     server_port = 55551
 
+    # Flag for controlling the thread
+    global running
+    running = True
+
     # Create a socket object
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((server_ip, server_port))
+    server.settimeout(1)
 
     # Listen for incoming connections
     server.listen(5)
@@ -279,14 +287,34 @@ def startServer():
 
     # Start handler thread
     thread = threading.Thread(target=handleClients, args=())
+    thread.daemon = True  # Make thread a daemon so it exits when main thread exits
     thread.start()
 
-    while True:
-        # Accept a connection
-        client_socket, addr = server.accept()
-        client_socket.settimeout(config["timePerStep"] + 5)
-        newClients.append([client_socket, addr])
-        print(f"[ACTIVE CONNECTIONS] {len(clients) + len(newClients)}")
+    try:
+        while running:
+            try:
+                # Accept a connection with timeout
+                client_socket, addr = server.accept()
+                client_socket.settimeout(config["timePerStep"] + 5)
+                newClients.append([client_socket, addr])
+                print(f"[ACTIVE CONNECTIONS] {len(clients) + len(newClients)}")
+            except socket.timeout:
+                # No connection received, continue loop
+                continue
+    except KeyboardInterrupt:
+        print("[SHUTTING DOWN] Server is shutting down...")
+    finally:
+        # Clean up
+        running = False
+        server.close()
+        print("Server socket closed")
+
+        # Wait for the thread to finish (optional, with timeout)
+        thread.join(2.0)
+        if thread.is_alive():
+            print("Thread did not terminate gracefully")
+        else:
+            print("Thread terminated gracefully")
 
 
 if __name__ == "__main__":

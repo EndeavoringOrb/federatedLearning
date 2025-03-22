@@ -4,7 +4,6 @@ import numpy as np
 import socket
 import struct
 import pickle
-import numpy as np
 from datetime import datetime
 
 headerFormat = "I"
