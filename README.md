@@ -15,9 +15,10 @@ The system consists of a server and multiple clients that work together to train
 
 ## Repository Structure
 
+- `shakeSpeareData/`
+  - `shakespeareData.py`: Data loading and preprocessing functions
 - `utilities/`
   - `communication.py`: Handles network communication between server and clients
-  - `data.py`: Data loading and preprocessing functions
   - `model.py`: Definition of the language model and optimizer
   - `misc.py`: Miscellaneous utility functions
 
