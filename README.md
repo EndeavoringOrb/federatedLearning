@@ -1,6 +1,6 @@
 # Distributed Language Model Training
 
-This repository contains code for training a Recurrent Neural Network (RNN) for text generation using multiple clients. The training is done using [evolution strategies](https://openai.com/index/evolution-strategies/).
+This repository contains code for training a text generation Recurrent Neural Network (RNN) using multiple clients. The training is done using [evolution strategies](https://openai.com/index/evolution-strategies/).
 
 ## Overview
 
