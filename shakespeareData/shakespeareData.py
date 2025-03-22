@@ -75,7 +75,7 @@ def tokenLoader(vocabSize, batchSize):
     tokenizer = Tokenizer(vocabSize)
 
     tokens = [
-        np.array(tokenizer.tokenize(text, True)).astype(np.uint16)
+        np.array(tokenizer.tokenize(text, True)).astype(np.uint8)
         for text in textLoader()
     ]
 

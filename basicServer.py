@@ -183,7 +183,7 @@ def handleClients():
                     # send tokens
                     batchTokens, batchInfo = next(tokens)
                     sendBytes(
-                        client[0], np.array([]).astype(np.uint16).tobytes(), client[1]
+                        client[0], np.array([]).astype(np.uint8).tobytes(), client[1]
                     )
                     # send tokens info
                     sendBytes(client[0], pickle.dumps([]), client[1])

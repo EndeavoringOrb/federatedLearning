@@ -31,7 +31,7 @@ def start_client():
     grad: np.ndarray = np.zeros_like(weights)
     ## receive tokens
     print("Waiting to receive tokens")
-    tokens, valid = receiveData(client, "np.uint16", "SERVER")
+    tokens, valid = receiveData(client, "np.uint8", "SERVER")
     if not valid:
         exit(0)
     ## receive tokens info
@@ -121,7 +121,7 @@ def start_client():
         # receive tokens
         print("Waiting to receive tokens ", end="")
         start = perf_counter()
-        tokens, valid = receiveData(client, "np.uint16", "SERVER")
+        tokens, valid = receiveData(client, "np.uint8", "SERVER")
         if not valid:
             exit(0)
         elapsed = perf_counter() - start
