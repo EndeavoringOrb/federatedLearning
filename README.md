@@ -115,10 +115,9 @@ The training configuration is defined in `basicServer.py` and includes:
 - `newTokensInterval`: Interval (in training steps) for sending new tokens to clients
 - `batchSize`: Batch size for clients to use when evaluating loss
 
-## Extending the System
-
-To extend this system:
-
-1. Modify the `ChatModel` class in `model.py` to implement different architectures
-2. Update data loading in `data.py` to support different datasets
-3. Adjust hyperparameters in `basicServer.py` to optimize training
+## Future Work
+- Optimize training
+  - Port to C++
+  - Implement sequence packing for higher average batch sizes
+- Support different model architectures
+- Support different datasets

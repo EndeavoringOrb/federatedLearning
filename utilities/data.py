@@ -86,18 +86,3 @@ def chatTokenLoader(repeat=True):
 
         if not repeat:
             break
-
-
-def getAugmentedCriticData(tokens):
-    newLineToken = stoi["\n"]
-
-    randomize = False
-    for i, token in enumerate(tokens):
-        if token == newLineToken:
-            randomize = False
-        elif randomize:
-            tokens[i] = np.random.randint(6, vocabSize, 1)
-        elif token == respondToken:
-            randomize = True
-
-    return tokens
