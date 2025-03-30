@@ -1,0 +1,85 @@
+serverHandleClients():
+    while running:
+        send info to new clients
+            weights
+            tokens
+            tokenInfo
+                [{"role": str ("user" or "bot"),
+                  "length": int (# of tokens)}]
+        get rewards from all clients
+        normalize rewards
+        send normalized rewards, seeds, and new seed to all clients
+
+toolProcess(text):
+    replace any function calls with their output
+    i.e.
+    "The answer is calculate(2+2)" -> "The answer is 4"
+
+getReward(output, correctAnswer):
+    """
+    Returns float 0-1 reward
+    """
+    return 1.0 if output == correctAnswer else 0.0
+
+getLoss(model, tokens, tokenInfo, maxNewTokens)
+    # this is for batchSize=1
+    state = model.init_state(1)
+    tokensIdx = 0
+    generated_tokens = []
+    in_tool_call = False
+    tool_call = ""
+    in_answer = False
+    answer = ""
+
+    for item in tokenInfo:
+        itemTokens = tokens[tokensIdx:tokensIdx+item["length"]]
+
+        if item["role"] == "user":
+            for idx in range(tokensIdx, tokensIdx + item["length"]):
+                state = model.forward(state, tokens[idx])
+        elif item["role"] == "bot":
+            for idx in range(maxNewTokens):
+                logits = model.getOut(state)
+                tok = sample(logits)
+                if tok == end:
+                    break
+                generated_tokens.append(tok)
+                if tok == answer_token:
+                    if in_answer:
+                        break
+                    in_answer = True
+                if tok == tool_token:
+                    if in_tool_call:
+                        result = toolProcess(tool_call)
+                        result_tokens = [result_token] + encode(result) + [result_token]
+                        for result_token in result_tokens:
+                            state = model.forward(state, result_token)
+                        tool_call = ""
+                    in_tool_call = !in_tool_call
+                if in_tool_call and tok not in special_tokens:
+                    tool_call += decode(tok)
+                if in_answer and tok not in special_tokens:
+                    answer += decode(tok)
+
+            reward = getReward(answer, decode(itemTokens))
+
+        tokensIdx += item["length"]
+
+
+# how tool calling works
+
+[{
+    "role": "user",
+    "tokens": [...]
+    "text": "What is 3+4?"
+},
+{
+    "role": "bot",
+    "tokens": "<tool_token>calculate(3+4)<tool_token>"
+              "<result_token>7<result_token>"
+              "<answer_token>3+4 is 7.<answer_token>",
+    "text": "3+4 is 7."
+}]
+
+if token == <tool_token> and in_tool_call:
+    res
