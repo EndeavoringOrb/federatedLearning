@@ -12,6 +12,7 @@ class Tokenizer:
         print(f"Initializing tokenizer...")
         self.vocab = "abcdefghijklmnopqrstuvwxyz"
         self.vocab += "0123456789"
+        self.vocab += "()+-*/."
         self.vocab_set = set(self.vocab)
         self.vocab = sorted(list(self.vocab_set))
 
@@ -21,6 +22,7 @@ class Tokenizer:
         self.capitalize_token = 3
         self.user_token = 4
         self.bot_token = 5
+        self.tool_select_token = 6
 
         # special tokens
         self.special_tokens = {
@@ -30,6 +32,7 @@ class Tokenizer:
             self.capitalize_token: "\x03",  # capitalize token
             self.user_token: "\x04",  # user token
             self.bot_token: "\x05",  # bot token
+            self.tool_select_token: "\x06",  # tool select token
         }
 
         self.stoi = {char: num + 6 for num, char in enumerate(self.vocab)}
@@ -73,19 +76,37 @@ class Tokenizer:
         return tokens, tokenInfo
 
 
-def toolProcess(text: str):
-    """
-    Replace any function calls with their output
-    i.e.
-    "The answer is calculate(2+2)" -> "The answer is 4"
-    """
-    tool_map = {"calculate": tools.calculate}
-    for name, func in tool_map.items():
-        pattern = rf"{name}\((.*?)\)"
-        matches = re.findall(pattern, text)
-        if len(matches) == 1:
-            return func(text)
-    return ""
+class ToolManager:
+    def __init__(self, tokenizer: Tokenizer):
+        self.tool_map = {"calculate": tools.calculate}
+        self.constraints = self.initConstraints(tokenizer)
+
+    def initConstraints(self, tokenizer: Tokenizer):
+        keys = self.tool_map.keys()
+        maxLen = max([len(key) for key in keys])
+        constraints = []
+        for i in range(maxLen):
+            idxConstraints = [
+                tokenizer.encode(key[i])[0] for key in keys if len(key) > i
+            ]
+            constraints.append(idxConstraints)
+        return constraints
+
+    def getConstraints(self, idx):
+        if idx >= 0 and idx < len(self.constraints):
+            return self.constraints[idx]
+        return []
+
+    def process(self, select: str, command: str):
+        """
+        Call tools
+        """
+        if select in self.tool_map:
+            try:
+                return self.tool_map[select](command)
+            except Exception as e:
+                pass
+        return ""
 
 
 def getReward(output: str, correctAnswer: str):
@@ -120,14 +141,28 @@ def softmax(x):
     np.multiply(x, invSum, x)
 
 
-def sample(logits, vocabSize):
+def sample(logits, vocabSize) -> int:
     softmax(logits)  # logits -> probs
     token = np.random.choice(vocabSize, 1, p=logits)[0]
     return token.item()
 
 
+def sampleConstrained(logits, validTokens) -> int:
+    validLogits = logits[validTokens]
+    softmax(validLogits)  # logits -> probs
+    tokenIdx = np.random.choice(len(validTokens), 1, p=validLogits)[0]
+    token = validTokens[tokenIdx]
+    return token
+
+
 def evaluate(
-    model: ChatModel, weights, tokenizer: Tokenizer, tokens, tokenInfo, config
+    model: ChatModel,
+    weights,
+    tokenizer: Tokenizer,
+    tokens,
+    tokenInfo,
+    config,
+    toolManager: ToolManager,
 ):
     """
     tokenInfo:
@@ -139,12 +174,14 @@ def evaluate(
     # this is for batchSize=1
     state = model.getInitState(weights, config["hiddenSize"])
     tokensIdx = 0
-    generated_tokens = []
+    in_tool_select = False
+    tool_select = ""
     in_tool_call = False
     tool_call = ""
     in_answer = False
     answer = ""
     total_reward = 0
+    generated_tokens = []
 
     for item in tokenInfo:
         itemTokens = tokens[tokensIdx : tokensIdx + item["length"]]
@@ -168,45 +205,63 @@ def evaluate(
                     config["vocabSize"],
                     config["nLayers"],
                 )
-                tok = sample(logits, config["vocabSize"])
-                generated_tokens.append(tok)
+                if in_tool_select and tok not in tokenizer.special_tokens:
+                    constraints = toolManager.getConstraints(len(tool_select))
+                    if len(constraints) > 0:
+                        tok = sampleConstrained(logits, constraints)
+                        if tok not in tokenizer.special_tokens:
+                            tool_select += tokenizer.decode(tok)
+                    else:
+                        tok = tokenizer.tool_select_token
+                else:
+                    tok = sample(logits, config["vocabSize"])
                 if tok == tokenizer.answer_token:
                     if in_answer:
                         break
                     in_answer = True
-                if tok == tokenizer.tool_token:
-                    if in_tool_call:
-                        result = toolProcess(tool_call)
-                        result_tokens = (
-                            [tokenizer.result_token]
-                            + tokenizer.encode(result)
-                            + [tokenizer.result_token]
+                if tok == tokenizer.tool_select_token:
+                    if in_tool_select:
+                        in_tool_call = True
+                    in_tool_select = not in_tool_select
+                if tok == tokenizer.tool_token and in_tool_call:
+                    result = toolManager.process(tool_select, tool_call)
+                    result_tokens = (
+                        [tokenizer.result_token]
+                        + tokenizer.encode(result)
+                        + [tokenizer.result_token]
+                    )
+                    for tool_call_result_tok in result_tokens:
+                        state = model.getNextState(
+                            weights,
+                            state,
+                            tool_call_result_tok,
+                            config["hiddenSize"],
+                            config["vocabSize"],
+                            config["nLayers"],
                         )
-                        for tool_call_result_tok in result_tokens:
-                            state = model.getNextState(
-                                weights,
-                                state,
-                                tool_call_result_tok,
-                                config["hiddenSize"],
-                                config["vocabSize"],
-                                config["nLayers"],
-                            )
-                        tool_call = ""
-                    in_tool_call = not in_tool_call
+                    tool_select = ""
+                    tool_call = ""
                 if in_tool_call and tok not in tokenizer.special_tokens:
                     tool_call += tokenizer.decode(tok)
                 if in_answer and tok not in tokenizer.special_tokens:
                     answer += tokenizer.decode(tok)
+
+                generated_tokens.append(tok)
 
             reward = getReward(answer, tokenizer.decode(itemTokens))
             total_reward += reward
 
         tokensIdx += item["length"]
 
+    if reward >= 1:
+        print(tokenizer.decode(generated_tokens))
+        print()
+
     return total_reward
 
 
 if __name__ == "__main__":
+    print(getReward("4", "4"))
     mpt.log_sys("Initializing...")
     config = {
         "numTrials": 1000,
@@ -223,6 +278,7 @@ if __name__ == "__main__":
     }
     tokenizer = Tokenizer()
     model = ChatModel()
+    toolManager = ToolManager(tokenizer)
 
     weights = model.getWeights(
         config["hiddenSize"], config["vocabSize"], config["nLayers"]
@@ -268,7 +324,7 @@ if __name__ == "__main__":
                 weights + np.random.randn(weights.shape[0]) * config["sigma"]
             )
             reward = evaluate(
-                model, trial_weights, tokenizer, tokens, tokenInfo, config
+                model, trial_weights, tokenizer, tokens, tokenInfo, config, toolManager
             )
             all_rewards[i] = reward
         if config["numTrials"] > 0:

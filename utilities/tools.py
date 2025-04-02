@@ -10,13 +10,15 @@ def apply_operator(op, val1, val2):
     return 0
 
 
-def get_token_type(token):
+def get_token_type(token: str):
     if token in "()":
         return "parentheses"
     elif token in ("+", "-", "*", "/"):
         return "op"
-    else:
+    elif token.isdigit() or token == ".":
         return "value"
+    else:
+        raise ValueError
 
 
 def expr_text(ops, vals):
@@ -56,14 +58,14 @@ def calculate(expr: str):
             # It's an operator, push it onto the stack
             ops.append(token)
         elif token == ")":
-            print(expr_text(ops, vals), end="")
+            #print(expr_text(ops, vals), end="")
             # Pop operator and two operands, compute and push result back
             op = ops.pop()
             val2 = vals.pop()
             val1 = vals.pop()
             result = apply_operator(op, val1, val2)
             vals.append(result)
-            print(f" -> {result}")
+            #print(f" -> {result}")
 
     return str(vals.pop())
 
