@@ -1,319 +1,487 @@
 import socket
 import threading
-from threading import Lock
-from utilities.communication import *
-from utilities.model import *
-from utilities.misc import *
+import queue
+import concurrent.futures
 from time import sleep, perf_counter
-from shakespeareData.shakespeareData import tokenLoader
 import json
 import os
+import numpy as np
 
-config = {
-    "timePerStep": 10,
-    "learningRate": 1e-3,
-    "sigma": 1e-2,
-    "hiddenSize": 16,
-    "vocabSize": 76,
-    "nLayers": 4,
-    "optimizer": "adam",  # "sgd" or "adam"
-    "beta1": 0.9,
-    "beta2": 0.999,
-    "stepNum": 0,
-    "checkPointTime": 60,
-    "newTokensInterval": 1e9,  # send new tokens every N steps
-    "batchSize": 8,
-}
-seedHigh = 4_000_000
+from utilities.communication import (
+    CommunicationHandler,
+    log,
+)
+from utilities.model import *
+from shakespeareData.shakespeareData import tokenLoader
 
 
-tokens = tokenLoader(config["vocabSize"], config["batchSize"])
+# Thread-safe client management using a queue-based approach
+class ClientManager:
+    def __init__(self):
+        self.active_clients = []
+        self.new_clients_queue = queue.Queue()
+        self.lock = threading.RLock()  # For active_clients only
 
-model = ChatModel()
+    def add_new_client(self, client_socket, client_addr):
+        """Add a new client to the queue - no locking needed"""
+        self.new_clients_queue.put((client_socket, client_addr))
 
-weights = model.getWeights(config["hiddenSize"], config["vocabSize"], config["nLayers"])
-nParams = weights.shape[0]
-print(f"Model has {nParams:,} parameters")
-optimizerValues = np.zeros(nParams * 2).astype(np.float32)
-newWeights = False
-all_rewards = []
-reward_info = []
-stepNum = 0
+    def get_new_clients(self):
+        """Get all new clients without blocking - no locking needed"""
+        new_clients = []
+        while not self.new_clients_queue.empty():
+            try:
+                new_clients.append(self.new_clients_queue.get_nowait())
+            except queue.Empty:
+                break
+        return new_clients
 
-lastCheckPointTime = perf_counter()
+    def activate_client(self, client):
+        """Move a client to active status"""
+        with self.lock:
+            self.active_clients.append(client)
 
-clients = []
-newClients = []
+    def get_active_clients(self):
+        """Get a copy of active clients list"""
+        with self.lock:
+            return self.active_clients.copy()
 
-threadLock = Lock()
+    def remove_client(self, client):
+        """Remove a client from active list"""
+        client_socket, client_addr = client
+        try:
+            log.warning(f"Removing client {client_addr}.")
+            client_socket.close()
+        except Exception as e:
+            log.error(f"Error closing socket for {client_addr}: {e}")
+
+        with self.lock:
+            if client in self.active_clients:
+                self.active_clients.remove(client)
+
+    def count_clients(self):
+        """Get total count of clients"""
+        with self.lock:
+            active_count = len(self.active_clients)
+        return active_count + self.new_clients_queue.qsize()
 
 
-def getWeights(currentTrainingRun):
-    global clients
-    global config
-    global stepNum
-    global optimizerValues
-    global weights
-    global lastCheckPointTime
+class TrainingServer:
+    def __init__(self):
+        # Configuration
+        self.config = {
+            "timePerStep": 10,
+            "learningRate": 1e-3,
+            "sigma": 1e-2,
+            "hiddenSize": 16,
+            "vocabSize": 76,
+            "nLayers": 4,
+            "optimizer": "adam",  # "sgd" or "adam"
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "stepNum": 0,
+            "checkPointTime": 60,
+            "newTokensInterval": 1e9,  # send new tokens every N steps
+            "batchSize": 1,
+            "modelType": "chat",
+        }
+        self.seed_high = 4_000_000
 
-    print(f"Getting weights from {clients[0][1]}")
-    # request weights
-    sendBytes(clients[0][0], "need weights".encode("utf-8"), clients[0][1])
-
-    # get weights
-    data, valid = receiveData(clients[0][0], "np.float32", clients[0][1])
-    if valid:
-        print(f"[{clients[0][1]}] Sent weights")
-        config["stepNum"] = int(data[0])
-        stepNum = config["stepNum"]
-        optimizerValues = data[1 : 1 + 2 * nParams]
-        weights = data[1 + 2 * nParams :]
-        np.save(
-            f"trainingRuns/{currentTrainingRun}/model.npy",
-            np.concatenate(
-                (
-                    [
-                        config["hiddenSize"],
-                        config["vocabSize"],
-                        config["nLayers"],
-                    ],
-                    weights,
-                )
-            ),
+        # Initialize model and tokens
+        self.tokens = tokenLoader(self.config["vocabSize"], self.config["batchSize"])
+        self.model = ChatModel()
+        self.weights = self.model.getWeights(
+            self.config["hiddenSize"], self.config["vocabSize"], self.config["nLayers"]
         )
-        lastCheckPointTime = perf_counter()
-        return True
-    else:
-        print(f"Failed to get weights")
-        return False
+        self.n_params = self.weights.shape[0]
+        log.info(f"Model has {self.n_params:,} parameters")
 
+        self.optimizer_values = np.zeros(self.n_params * 2).astype(np.float32)
+        self.step_num = 0
+        self.last_checkpoint_time = perf_counter()
+        self.all_rewards = []
+        self.reward_info = []
 
-def handleClients():
-    global clients
-    global newClients
-    global weights
-    global optimizerValues
-    global config
-    global stepNum
-    global running
+        # Initialize client manager
+        self.client_manager = ClientManager()
 
-    if len(os.listdir("trainingRuns")) == 0:
-        currentTrainingRun = 0
-    else:
-        currentTrainingRun = max([int(item) for item in os.listdir("trainingRuns")]) + 1
-    os.makedirs(f"trainingRuns/{currentTrainingRun}")
+        # Control flow
+        self.running = False
+        self.current_training_run = self._setup_training_run()
 
-    with open(
-        f"trainingRuns/{currentTrainingRun}/config.json", "w", encoding="utf-8"
-    ) as f:
-        json.dump(config, f)
+        # Thread pool for handling client communications
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
-    while running:
-        # wait for some clients
-        while len(clients) + len(newClients) == 0:
-            sleep(0.05)
+    def _setup_training_run(self):
+        """Setup the training run directory and return the run number"""
+        if not os.path.exists("trainingRuns"):
+            os.makedirs("trainingRuns")
 
-        stepNum += 1
-
-        # send info to new clients
-        if len(newClients) > 0:
-            gotWeights = False
-            if len(clients) > 0:
-                gotWeights = getWeights(currentTrainingRun)
-
-            if len(clients) == 0 or gotWeights:
-                print(f"Sending weights to {len(newClients)} new clients")
-                clientRemoveList = []
-                for client in newClients:
-                    try:
-                        # send weights
-                        sendBytes(client[0], weights.tobytes(), client[1])
-                        # send tokens
-                        batchTokens, batchInfo = next(tokens)
-                        sendBytes(client[0], batchTokens.tobytes(), client[1])
-                        # send tokens info
-                        sendBytes(client[0], pickle.dumps(batchInfo), client[1])
-                        # send optimizer state
-                        sendBytes(client[0], optimizerValues.tobytes(), client[1])
-                        # send config
-                        sendBytes(client[0], pickle.dumps(config), client[1])
-                        # send random seed
-                        sendBytes(
-                            client[0],
-                            pickle.dumps(np.random.randint(0, seedHigh)),
-                            client[1],
-                        )
-                    except Exception as e:
-                        print(f"[ERROR] (sending initial data) {e}")
-                        clientRemoveList.append(client)
-                for client in clientRemoveList:
-                    client[0].close()
-                    newClients.remove(client)
-                clients.extend(newClients)
-                newClients = []
-        elif perf_counter() - lastCheckPointTime > config["checkPointTime"]:
-            gotWeights = getWeights(currentTrainingRun)
-
-        clientRemoveList = []
-        for client in clients:
-            try:
-                sendBytes(client[0], "dont need weights".encode("utf-8"), client[1])
-            except Exception as e:
-                print(f"[ERROR] (sending dont need weights) {e}")
-                clientRemoveList.append(client)
-        for client in clientRemoveList:
-            client[0].close()
-            clients.remove(client)
-
-        # send new tokens if it is time to
-        clientRemoveList = []
-        for client in clients:
-            try:
-                if stepNum % config["newTokensInterval"] == 0:
-                    # send tokens
-                    batchTokens, batchInfo = next(tokens)
-                    sendBytes(client[0], batchTokens.tobytes(), client[1])
-                    # send tokens info
-                    sendBytes(client[0], pickle.dumps(batchInfo), client[1])
-                else:
-                    # send tokens
-                    batchTokens, batchInfo = next(tokens)
-                    sendBytes(
-                        client[0], np.array([]).astype(np.uint8).tobytes(), client[1]
-                    )
-                    # send tokens info
-                    sendBytes(client[0], pickle.dumps([]), client[1])
-            except Exception as e:
-                print(f"[ERROR] (sending new tokens) {e}")
-                clientRemoveList.append(client)
-        for client in clientRemoveList:
-            client[0].close()
-            clients.remove(client)
-
-        # get rewards
-        print(f"Waiting for rewards")
-        all_rewards = []
-        reward_info = []
-        clientRemoveList = []
-        for client in clients:
-            try:
-                rewards, valid = receiveData(client[0], "np.float32", client[1])
-                if valid:
-                    print(f"[{client[1]}] Sent {len(rewards) - 1:,} rewards")
-                    seed = rewards[0].astype(np.uint32)
-                    with threadLock:
-                        all_rewards.extend(rewards[1:])
-                        reward_info.append((len(rewards) - 1, seed))
-                else:
-                    print(f"[{client[1]}] Failed sending rewards")
-            except Exception as e:
-                print(f"[ERROR] (getting rewards) {e}")
-                clientRemoveList.append(client)
-        for client in clientRemoveList:
-            client[0].close()
-            clients.remove(client)
-
-        # process rewards
-        numRewards = len(all_rewards)
-        print(f"Total # Rewards: {numRewards:,}")
-        if numRewards == 1:
-            mean = np.nan
-            normalizedRewards = np.zeros(1)
-            reward_info = [(1, 0)]
-            print(f"Setting mean to 0 because of nan value")
+        if len(os.listdir("trainingRuns")) == 0:
+            current_run = 0
         else:
-            normalizedRewards = np.array(all_rewards)
-            mean = normalizedRewards.mean()
-            print(f"Mean Reward: {mean}")
-            if np.isnan(mean):
-                normalizedRewards = np.zeros(1)
-                reward_info = [(1, 0)]
-                print(f"Setting mean to 0 because of nan value")
-            else:
-                mulVal = 1.0 / (
-                    np.std(all_rewards) * float(numRewards) * config["sigma"]
-                )
-                normalizedRewards = (normalizedRewards - mean) * mulVal
+            # Find the highest numbered directory
+            run_dirs = [d for d in os.listdir("trainingRuns") if d.isdigit()]
+            current_run = max([int(item) for item in run_dirs]) + 1 if run_dirs else 0
 
-        print()
-        seeds = np.random.randint(0, seedHigh, len(clients))
-        normalizedRewardsBytes = normalizedRewards.astype(np.float32).tobytes()
-        clientRemoveList = []
-        for i, client in enumerate(clients):
+        run_path = f"trainingRuns/{current_run}"
+        os.makedirs(run_path, exist_ok=True)
+        log.info(f"Starting training run {current_run}")
+
+        # Save config
+        config_path = f"{run_path}/config.json"
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(self.config, f, indent=4)
+            log.info(f"Saved config to {config_path}")
+
+        return current_run
+
+    def save_checkpoint(self):
+        """Save model checkpoint"""
+        checkpoint_path = f"trainingRuns/{self.current_training_run}"
+        os.makedirs(checkpoint_path, exist_ok=True)
+
+        model_data = np.concatenate(
+            (
+                [
+                    self.config["hiddenSize"],
+                    self.config["vocabSize"],
+                    self.config["nLayers"],
+                ],
+                self.weights,
+            )
+        )
+
+        np.save(f"{checkpoint_path}/model.npy", model_data)
+        log.info(f"Checkpoint saved at step {self.step_num}.")
+        self.last_checkpoint_time = perf_counter()
+
+    def _get_weights_from_client(self, client):
+        """Get weights from a client"""
+        client_socket, client_addr = client
+
+        try:
+            # Request weights
+            CommunicationHandler.send_message(client_socket, "need weights")
+
+            # Receive weights data
+            data = CommunicationHandler.receive_message(client_socket)
+
+            log.info(f"[{client_addr}] Sent weights data.")
+            self.config["stepNum"] = int(data[0])
+            self.step_num = self.config["stepNum"]
+            self.optimizer_values = data[1 : 1 + 2 * self.n_params]
+            self.weights = data[1 + 2 * self.n_params :]
+
+            self.save_checkpoint()
+            return True
+
+        except Exception as e:
+            log.error(f"Failed to get weights from {client_addr}: {e}")
+            self.client_manager.remove_client(client)
+            return False
+
+    def initialize_client(self, client):
+        """Initialize a new client with model data"""
+        client_socket, client_addr = client
+
+        try:
+            log.debug(f"Sending weights to {client_addr}")
+            CommunicationHandler.send_message(client_socket, self.weights)
+
+            log.debug(f"Sending tokens to {client_addr}")
+            batch_tokens, batch_info = next(self.tokens)
+            CommunicationHandler.send_message(client_socket, batch_tokens)
+            CommunicationHandler.send_message(client_socket, batch_info)
+
+            log.debug(f"Sending optimizer state to {client_addr}")
+            CommunicationHandler.send_message(client_socket, self.optimizer_values)
+
+            log.debug(f"Sending config to {client_addr}")
+            CommunicationHandler.send_message(client_socket, self.config)
+
+            log.debug(f"Sending random seed to {client_addr}")
+            client_seed = np.random.randint(0, self.seed_high)
+            CommunicationHandler.send_message(client_socket, client_seed)
+
+            log.info(f"Successfully sent initial data to {client_addr}")
+            return True
+
+        except Exception as e:
+            log.error(f"Failed to initialize client {client_addr}: {e}")
+            return False
+
+    def process_new_clients(self):
+        """Process and initialize new clients"""
+        new_clients = self.client_manager.get_new_clients()
+        if not new_clients:
+            return
+
+        # If we have active clients, get latest weights
+        active_clients = self.client_manager.get_active_clients()
+        if active_clients:
+            # Try to get weights from any active client
+            for client in active_clients:
+                if self._get_weights_from_client(client):
+                    break
+
+        # Initialize each new client
+        for client in new_clients:
+            if self.initialize_client(client):
+                self.client_manager.activate_client(client)
+            else:
+                self.client_manager.remove_client(client)
+
+    def send_weight_request_status(self, client):
+        """Send weight request status to a client"""
+        client_socket, client_addr = client
+        try:
+            CommunicationHandler.send_message(client_socket, "dont need weights")
+            return True
+        except Exception as e:
+            log.error(f"Failed to send status to {client_addr}: {e}")
+            return False
+
+    def send_tokens_to_client(self, client, send_new_tokens):
+        """Send tokens to a client"""
+        client_socket, client_addr = client
+        try:
+            if send_new_tokens:
+                batch_tokens, batch_info = next(self.tokens)
+                log.debug(f"Sending new tokens to {client_addr}")
+                CommunicationHandler.send_message(client_socket, batch_tokens)
+                CommunicationHandler.send_message(client_socket, batch_info)
+            else:
+                log.debug(f"Sending empty token indicator to {client_addr}")
+                CommunicationHandler.send_message(
+                    client_socket, np.array([], dtype=np.uint8)
+                )
+                CommunicationHandler.send_message(client_socket, [])
+            return True
+        except Exception as e:
+            log.error(f"Failed to send tokens to {client_addr}: {e}")
+            return False
+
+    def receive_rewards_from_client(self, client):
+        """Receive rewards from a client"""
+        client_socket, client_addr = client
+        client_rewards = []
+        seed = None
+
+        try:
+            rewards_data = CommunicationHandler.receive_message(client_socket)
+            if isinstance(rewards_data, np.ndarray) and rewards_data.size > 0:
+                log.info(f"[{client_addr}] Received {rewards_data.size - 1:,} rewards.")
+                seed = rewards_data[0].astype(np.uint32)
+                client_rewards = rewards_data[1:]
+                return True, client_rewards, seed
+            else:
+                log.warning(f"[{client_addr}] Received invalid rewards data")
+                return False, [], None
+        except Exception as e:
+            log.error(f"Failed to receive rewards from {client_addr}: {e}")
+            return False, [], None
+
+    def send_normalized_rewards_to_client(
+        self, client, normalized_rewards, reward_info, next_seed
+    ):
+        """Send normalized rewards to a client"""
+        client_socket, client_addr = client
+        try:
+            # Send normalized rewards as bytes
+            rewards_bytes = normalized_rewards.astype(np.float32).tobytes()
+            CommunicationHandler.send_message(client_socket, rewards_bytes)
+
+            # Send reward info and next seed
             response = {
                 "reward_info": reward_info,
-                "seed": seeds[i],
+                "seed": next_seed,
             }
-            try:
-                sendBytes(client[0], normalizedRewardsBytes, client[1])
-                sendBytes(client[0], pickle.dumps(response), client[1])
-            except Exception as e:
-                print(f"[ERROR] (sending normalized rewards) {e}")
-                clientRemoveList.append(client)
-                continue
-            print(f"Sent rewards and info [{i+1}/{len(clients)}] {currentTime()}")
+            CommunicationHandler.send_message(client_socket, response)
+            log.info(f"Sent rewards and info to {client_addr}")
+            return True
+        except Exception as e:
+            log.error(f"Failed to send normalized rewards to {client_addr}: {e}")
+            return False
 
-        for client in clientRemoveList:
-            client[0].close()
-            clients.remove(client)
+    def normalize_rewards(self, rewards):
+        """Normalize rewards"""
+        if not rewards:
+            return np.array([], dtype=np.float32)
 
-        with open(
-            f"trainingRuns/{currentTrainingRun}/loss.txt", "a", encoding="utf-8"
-        ) as f:
-            f.write(f"{mean}\n")
+        rewards_array = np.array(rewards, dtype=np.float32)
+        mean_reward = np.mean(rewards_array)
+        std_dev = np.std(rewards_array)
+
+        if np.isnan(mean_reward) or len(rewards) <= 1 or std_dev == 0:
+            log.warning("Cannot normalize rewards. Using zeros.")
+            return np.zeros(len(rewards), dtype=np.float32), mean_reward
+
+        # Normalize rewards
+        mul_val = 1.0 / (std_dev * float(len(rewards)) * self.config["sigma"])
+        normalized = (rewards_array - mean_reward) * mul_val
+        return normalized, mean_reward
+
+    def run_training_step(self):
+        """Run a single training step"""
+        self.step_num += 1
+        log.info(f"--- Starting Step {self.step_num} ---")
+
+        # Process any new clients
+        self.process_new_clients()
+
+        # Check if checkpoint is needed
+        if perf_counter() - self.last_checkpoint_time > self.config["checkPointTime"]:
+            active_clients = self.client_manager.get_active_clients()
+            if active_clients:
+                # Try to get weights from first client for checkpoint
+                self._get_weights_from_client(active_clients[0])
+
+        # Send weight request status to all active clients
+        active_clients = self.client_manager.get_active_clients()
+        clients_to_remove = []
+
+        for client in active_clients:
+            if not self.send_weight_request_status(client):
+                clients_to_remove.append(client)
+
+        for client in clients_to_remove:
+            self.client_manager.remove_client(client)
+
+        # Determine if we should send new tokens
+        send_new = self.config["newTokensInterval"] < 1e8 and (
+            self.step_num % self.config["newTokensInterval"] == 0
+        )
+
+        # Send tokens to all active clients
+        active_clients = self.client_manager.get_active_clients()
+        clients_to_remove = []
+
+        for client in active_clients:
+            if not self.send_tokens_to_client(client, send_new):
+                clients_to_remove.append(client)
+
+        for client in clients_to_remove:
+            self.client_manager.remove_client(client)
+
+        # Collect rewards from all clients
+        active_clients = self.client_manager.get_active_clients()
+        all_rewards = []
+        reward_info = []
+        clients_to_remove = []
+
+        for client in active_clients:
+            success, client_rewards, seed = self.receive_rewards_from_client(client)
+            if not success:
+                clients_to_remove.append(client)
+            elif len(client_rewards) > 0:
+                all_rewards.extend(client_rewards)
+                reward_info.append((len(client_rewards), seed))
+
+        for client in clients_to_remove:
+            self.client_manager.remove_client(client)
+
+        # Process rewards
+        if all_rewards:
+            normalized_rewards, mean_reward = self.normalize_rewards(all_rewards)
+
+            # Log mean reward
+            log.info(f"Mean Reward: {mean_reward}")
+            self._log_reward(mean_reward)
+
+            # Generate next seeds for clients
+            active_clients = self.client_manager.get_active_clients()
+            seeds = np.random.randint(0, self.seed_high, len(active_clients))
+
+            # Send normalized rewards to clients
+            clients_to_remove = []
+            for i, client in enumerate(active_clients):
+                if not self.send_normalized_rewards_to_client(
+                    client, normalized_rewards, reward_info, seeds[i]
+                ):
+                    clients_to_remove.append(client)
+
+            for client in clients_to_remove:
+                self.client_manager.remove_client(client)
+
+        log.info(f"--- Finished Step {self.step_num} ---")
+
+    def _log_reward(self, mean_reward):
+        """Log reward to file"""
+        loss_file_path = f"trainingRuns/{self.current_training_run}/loss.txt"
+        try:
+            with open(loss_file_path, "a", encoding="utf-8") as f:
+                f.write(f"{mean_reward}\n")
+        except IOError as e:
+            log.error(f"Could not write to loss file {loss_file_path}: {e}")
+
+    def run(self):
+        """Main server loop"""
+        self.running = True
+        while self.running:
+            if self.client_manager.count_clients() > 0:
+                self.run_training_step()
+            else:
+                sleep(0.1)  # Wait if no clients
+
+    def start(self, ip="0.0.0.0", port=55551):
+        """Start the server"""
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            server_socket.bind((ip, port))
+            server_socket.settimeout(2.0)
+        except OSError as e:
+            log.critical(f"Failed to bind server to {ip}:{port}: {e}")
+            return False
+
+        server_socket.listen(5)
+        try:
+            host_ip = socket.gethostbyname(socket.gethostname())
+            log.info(f"[LISTENING] Server is listening on {host_ip}:{port}")
+        except socket.gaierror:
+            log.info(f"[LISTENING] Server is listening on {ip}:{port}")
+
+        # Start handler thread
+        handler_thread = threading.Thread(target=self.run, daemon=True)
+        handler_thread.start()
+
+        try:
+            while self.running:
+                try:
+                    client_socket, addr = server_socket.accept()
+                    client_socket.settimeout(self.config["timePerStep"] + 15)
+                    log.info(f"[CONNECTION] Accepted connection from {addr}")
+                    self.client_manager.add_new_client(client_socket, addr)
+                    log.info(
+                        f"[ACTIVE CONNECTIONS] {self.client_manager.count_clients()}"
+                    )
+                except socket.timeout:
+                    continue
+                except OSError as e:
+                    log.error(f"Error accepting connection: {e}")
+                    sleep(1)
+        except KeyboardInterrupt:
+            log.info("Keyboard interrupt received. Shutting down server...")
+        finally:
+            self.running = False
+            log.info("Waiting for handler thread to finish...")
+            handler_thread.join(5.0)
+
+            # Clean up all clients
+            for client in self.client_manager.get_active_clients():
+                self.client_manager.remove_client(client)
+
+            # Close server socket
+            server_socket.close()
+            log.info("Server socket closed.")
+            return True
 
 
-def startServer():
-    # Server settings
-    server_ip = "0.0.0.0"
-    server_port = 55551
-
-    # Flag for controlling the thread
-    global running
-    running = True
-
-    # Create a socket object
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((server_ip, server_port))
-    server.settimeout(1)
-
-    # Listen for incoming connections
-    server.listen(5)
-    print(
-        f"[LISTENING] Server is listening on {socket.gethostbyname(socket.gethostname())}:{server_port}"
-    )
-
-    # Start handler thread
-    thread = threading.Thread(target=handleClients, args=())
-    thread.daemon = True  # Make thread a daemon so it exits when main thread exits
-    thread.start()
-
-    try:
-        while running:
-            try:
-                # Accept a connection with timeout
-                client_socket, addr = server.accept()
-                client_socket.settimeout(config["timePerStep"] + 5)
-                newClients.append([client_socket, addr])
-                print(f"[ACTIVE CONNECTIONS] {len(clients) + len(newClients)}")
-            except socket.timeout:
-                # No connection received, continue loop
-                continue
-    except KeyboardInterrupt:
-        print("[SHUTTING DOWN] Server is shutting down...")
-    finally:
-        # Clean up
-        running = False
-        server.close()
-        print("Server socket closed")
-
-        # Wait for the thread to finish (optional, with timeout)
-        thread.join(2.0)
-        if thread.is_alive():
-            print("Thread did not terminate gracefully")
-        else:
-            print("Thread terminated gracefully")
+def start_server():
+    """Entry point function"""
+    server = TrainingServer()
+    server.start()
 
 
 if __name__ == "__main__":
-    startServer()
+    start_server()
