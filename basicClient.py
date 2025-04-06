@@ -46,12 +46,12 @@ if __name__ == "__main__":
         )  # Ensure grad is float32
         log.info(f"Received initial weights, shape: {weights.shape}")
 
-        # 2. Tokens (as bytes, need to decode based on info)
+        # 2. Tokens
         tokens = initial_data_list[1]
         # 3. Token info (lengths)
         token_info = initial_data_list[2]  # Should be list of lengths
 
-        # Reconstruct batchTokens from bytes and info
+        # Reconstruct batchTokens from tokens and info
         batchTokens = []
         if isinstance(token_info, list) and token_info:
             start_idx = 0
@@ -249,7 +249,7 @@ if __name__ == "__main__":
                 time_taken_so_far = perf_counter() - trialStart
                 estimated_time_next_trial = (
                     timePerTrial if numTrials > 0 else 0.5
-                )  # Use estimate or a default guess
+                )  # Use estimate based on previous iterations or a default guess if this is the first iter
                 estimated_end_time = (
                     perf_counter() - stepStart + estimated_time_next_trial
                 )
@@ -286,10 +286,8 @@ if __name__ == "__main__":
                 timePerTrial = (perf_counter() - trialStart) / numTrials
 
                 # Safety break if loop runs unexpectedly long (e.g., time estimate is wrong)
-                if (perf_counter() - stepStart) > (time_limit + 5):
-                    log.warning(
-                        "Trial loop exceeded time limit significantly. Breaking."
-                    )
+                if (perf_counter() - stepStart) > (time_limit):
+                    log.warning("Stopping trials: Exceeded time limit.")
                     break
 
             trialEnd = perf_counter()

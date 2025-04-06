@@ -1,0 +1,16 @@
+{
+    "timePerStep": 10,
+    "learningRate": 0.001,
+    "sigma": 0.01,
+    "hiddenSize": 16,
+    "vocabSize": 76,
+    "nLayers": 4,
+    "optimizer": "adam",
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "stepNum": 0,
+    "checkPointTime": 60,
+    "newTokensInterval": 1000000000.0,
+    "batchSize": 1,
+    "modelType": "chat"
+}
