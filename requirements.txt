@@ -1,4 +1,1 @@
 numpy
-matplotlib
-git+https://github.com/EndeavoringOrb/miscPythonTools.git
-Levenshtein

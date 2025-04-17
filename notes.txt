@@ -1,0 +1,5 @@
+nous research - tool calling
+deepseek rl
+
+1. distill using retokenized logprobs
+2. 

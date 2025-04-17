@@ -1,0 +1,50 @@
+server variables:
+have_current_weights = False
+need_weights = False
+
+client variables:
+need_initial_data = True
+
+training step:
+    1. Server
+    server broadcast work config to clients
+        model_config = {
+            "hiddenSize": int, # model's hidden size
+            "vocabSize": int, # model's vocabulary size
+            "nLayers": int, # number of layers in model
+        }
+        optimizer_config = {
+            "learningRate": float, # grad update learning rate
+            "optimizer": "adam", # "sgd" or "adam"
+            "beta1": 0.9, # adam parameter
+            "beta2": 0.999, # adam parameter
+        }
+        token_config = [int] # list of sequence lengths
+        config = {
+            "time_limit": float, # seconds before rewards should be sent to server
+            "sigma": float, # std dev of model pertubation normal distribution
+            "model_config": model_config,
+            "optimizer_config": optimizer_config,
+            "stepNum": int, # what step are we currently doing? starts at 0
+            "sending weights": bool, # is the server sending the model weights?
+            "need_weights" bool, # does the server want this client to send it's weights to the server?
+        }
+        if client needs tokens:
+            send tokens
+        if client needs weights and have_current_weights:
+            send weights
+    
+    2. Client do work
+    if need_initial_data:
+        pass
+    elif work_config["need_weights"]:
+        send weights to server
+    else:
+        
+
+    3. Client send response to server
+    if need_initial_data:
+        response = {
+            "need_initial_data": True
+        }
+    else:

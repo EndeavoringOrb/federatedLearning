@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Run Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.0"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --sidebar-bg: #f0f0f0;
+            --hover-bg: #ddd;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1e1e1e;
+            --text-color: #ffffff;
+            --sidebar-bg: #2e2e2e;
+            --hover-bg: #3e3e3e;
+        }
+
+        body {
+            display: flex;
+            margin: 0;
+            font-family: sans-serif;
+            height: 100vh;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        #sidebar {
+            width: 200px;
+            overflow-y: scroll;
+            background: var(--sidebar-bg);
+            border-right: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        #content {
+            flex: 1;
+            padding: 20px;
+        }
+
+        .run-item {
+            cursor: pointer;
+            padding: 5px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .run-item:hover {
+            background: var(--hover-bg);
+        }
+
+        .selected {
+            background-color: #a3d2fc;
+        }
+
+        #themeToggle {
+            margin-bottom: 10px;
+        }
+
+        .diff {
+            background-color: yellow;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body data-theme="light">
+    <div id="sidebar">
+        <button id="themeToggle">Toggle Theme</button>
+        <h3>Runs</h3>
+        {% for run in runs %}
+        <div class="run-item" data-run="{{ run }}">{{ run }}</div>
+        {% endfor %}
+    </div>
+    <div id="content">
+        <canvas id="chart"></canvas>
+        <div id="configDisplay" style="white-space: pre-wrap; font-family: monospace;"></div>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
