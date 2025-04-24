@@ -34,6 +34,21 @@ class ChatModel:
         ].reshape(hiddenSize * 4, vocabSize)
         return out
 
+    def getTokPred(self, weights, state, hiddenSize, vocabSize, nLayers, tok):
+        out = state @ weights[
+            hiddenSize
+            + nLayers * (hiddenSize * hiddenSize + hiddenSize * vocabSize) : hiddenSize
+            + nLayers * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+            + hiddenSize * (hiddenSize * 4)
+        ].reshape(hiddenSize, hiddenSize * 4)
+        relu(out)
+        out = out @ weights[
+            hiddenSize
+            + nLayers * (hiddenSize * hiddenSize + hiddenSize * vocabSize)
+            + hiddenSize * (hiddenSize * 4) :
+        ].reshape(hiddenSize * 4, vocabSize)[:, tok]
+        return out
+
     def getNextState(self, weights, state, token, hiddenSize, vocabSize, nLayers):
         for i in range(nLayers):
             np.tanh(
