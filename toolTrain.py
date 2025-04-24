@@ -448,10 +448,10 @@ def save_checkpoint(config, weights):
 if __name__ == "__main__":
     mpt.log_sys("Initializing...")
     config = {
-        "population": 16384,
+        "population": 64,
         "numTrials": 1,  # number of trials per population member
-        "learningRate": 1e-2,
-        "sigma": 1e-3,
+        "learningRate": 1e-3,
+        "sigma": 1e-5,
         "hiddenSize": 16,
         "nLayers": 4,
         "optimizer": "adam",  # "sgd" or "adam"

@@ -1,0 +1,5 @@
+treat sequences as node tree, to find top seq prob:
+-keep track of max prob while iterating with postorder traversal
+-cut off node if prob falls below current max prob
+-as the max gets higher, sequences will get cut off earlier so the search will speed up
+-can also store top N (seq, prob) instead of just one
